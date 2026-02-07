@@ -1,9 +1,13 @@
 <script>
     import { onMount } from 'svelte';
+    import { page } from '$app/stores';
     import ImpactChart from './ImpactChart.svelte';
     import HeatmapView from './HeatmapView.svelte';
     import CorrelationTable from './CorrelationTable.svelte';
     import PriceTimeline from './PriceTimeline.svelte';
+    import QuickNav from '$lib/components/QuickNav.svelte';
+    
+    $: currentPath = $page.url.pathname;
     
     let selectedSymbol = 'EURUSD';
     let daysBack = 30;
@@ -49,13 +53,17 @@
     $: volIncrease = stats?.summary?.volatility_increase || 0;
   </script>
   
+  <svelte:head>
+    <title>Statistiques - DrevmBot</title>
+  </svelte:head>
+  
+  <QuickNav currentPath={currentPath} />
+  
   <div class="dashboard-container">
     <!-- Header -->
-    <header class="dashboard-header">
-      <div class="title-section">
-        <h1>📊 Dashboard Corrélation News/Prix</h1>
-        <p class="subtitle">Analyse l'impact réel des événements économiques sur tes actifs</p>
-      </div>
+    <header class="page-header">
+      <h1 class="page-title">📊 Dashboard Corrélation News/Prix</h1>
+      <p class="page-description">Analyse l'impact réel des événements économiques sur tes actifs</p>
       
       <div class="controls">
         <select bind:value={selectedSymbol} on:change={fetchStats} class="symbol-select">

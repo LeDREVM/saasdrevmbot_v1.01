@@ -1,7 +1,11 @@
 <script>
   import { onMount } from 'svelte';
+  import { page } from '$app/stores';
   import EventCard from './EventCard.svelte';
   import Timeline from '../stats/Timeline.svelte';
+  import QuickNav from '$lib/components/QuickNav.svelte';
+  
+  $: currentPath = $page.url.pathname;
   
   let events = [];
   let loading = true;
@@ -43,11 +47,17 @@
   $: mediumImpactCount = events.filter(e => e.impact === 'Medium').length;
 </script>
 
+<svelte:head>
+  <title>Calendrier Économique - DrevmBot</title>
+</svelte:head>
+
+<QuickNav currentPage={currentPath} />
+
 <div class="calendar-container">
   <!-- Header -->
-  <header>
-    <h1>📅 Calendrier Économique</h1>
-    <p class="date">{new Date().toLocaleDateString('fr-FR', {weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'})}</p>
+  <header class="page-header">
+    <h1 class="page-title">📅 Calendrier Économique</h1>
+    <p class="page-description">{new Date().toLocaleDateString('fr-FR', {weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'})}</p>
     
     <div class="stats">
       <span class="stat high">🔴 {highImpactCount} High</span>

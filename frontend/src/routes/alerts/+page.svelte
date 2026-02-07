@@ -1,10 +1,14 @@
 <script>
   import { onMount } from 'svelte';
+  import { page } from '$app/stores';
   import AlertCard from './AlertCard.svelte';
   import ConfigPanel from './ConfigPanel.svelte';
   import UpcomingEvents from './UpcomingEvents.svelte';
   import AlertHistory from './AlertHistory.svelte';
   import TestNotification from './TestNotification.svelte';
+  import QuickNav from '$lib/components/QuickNav.svelte';
+  
+  $: currentPath = $page.url.pathname;
   
   // User ID (hardcoded pour l'instant, à remplacer par auth)
   const userId = 'negus_dja';
@@ -120,13 +124,17 @@
   $: totalSent = stats?.summary?.total_alerts_sent || 0;
 </script>
 
+<svelte:head>
+  <title>Alertes - DrevmBot</title>
+</svelte:head>
+
+<QuickNav currentPage={currentPath} />
+
 <div class="dashboard-container">
   <!-- Header -->
-  <header class="dashboard-header">
-    <div class="title-section">
-      <h1>🔔 Dashboard Alertes</h1>
-      <p class="subtitle">Gestion intelligente des notifications d'événements économiques</p>
-    </div>
+  <header class="page-header">
+    <h1 class="page-title">🔔 Dashboard Alertes</h1>
+    <p class="page-description">Gestion intelligente des notifications d'événements économiques</p>
     
     <div class="header-actions">
       <button on:click={loadAll} class="refresh-btn">

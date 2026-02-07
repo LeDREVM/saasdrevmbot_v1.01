@@ -43,3 +43,6 @@ logs/
 .svelte-kit/
 build/
 dist/
+
+# Local Netlify folder
+.netlify

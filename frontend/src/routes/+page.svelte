@@ -1,5 +1,6 @@
 <script>
   import { onMount } from 'svelte';
+  import TradingEconomicsWidget from './TradingEconomicsWidget.svelte';
   
   // Configuration de l'API (utilise l'env var ou localhost)
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -97,6 +98,10 @@
   <meta name="description" content="Système d'alertes intelligent pour le trading Forex avec analyse du calendrier économique" />
 </svelte:head>
 
+<svelte:head>
+  <title>DrevmBot - Trading Assistant</title>
+</svelte:head>
+
 <div class="home-container">
   <!-- Hero Section -->
   <header class="hero">
@@ -158,6 +163,11 @@
         ></button>
       {/each}
     </div>
+  </section>
+
+  <!-- Trading Economics Widget -->
+  <section class="trading-economics-section">
+    <TradingEconomicsWidget />
   </section>
 
   <!-- Stats Section -->
@@ -841,6 +851,10 @@
   }
 
   /* Footer */
+  .trading-economics-section {
+    margin: 3rem 0;
+  }
+
   .footer {
     text-align: center;
     padding: 3rem 2rem;

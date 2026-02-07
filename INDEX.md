@@ -5,7 +5,8 @@ Bienvenue dans la documentation du projet **SaaS DrevmBot** !
 ## 🎯 Par où commencer ?
 
 ### 🚀 Vous voulez démarrer rapidement ?
-➡️ **[QUICKSTART.md](QUICKSTART.md)** - Guide de démarrage en 5 minutes
+➡️ **[QUICKSTART.md](QUICKSTART.md)** - Guide de démarrage en 5 minutes  
+➡️ **[GUIDE_DEMARRAGE_RAPIDE.md](GUIDE_DEMARRAGE_RAPIDE.md)** - Trading Economics en 5 minutes
 
 ### 📖 Vous voulez comprendre le projet ?
 ➡️ **[README.md](README.md)** - Documentation principale complète

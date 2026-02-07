@@ -7,8 +7,8 @@
   # Répertoire de publication
   publish = "build"
   
-  # Répertoire de base
-  base = "frontend"
+  # Répertoire de base (commenté car nous déployons depuis le dossier frontend)
+  # base = "frontend"
 
 [build.environment]
   # Version de Node.js
