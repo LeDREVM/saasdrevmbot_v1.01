@@ -1,0 +1,109 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: drevmbot-postgres
+    environment:
+      POSTGRES_USER: drevmbot
+      POSTGRES_PASSWORD: drevmbot_password
+      POSTGRES_DB: drevmbot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - drevmbot-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U drevmbot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: drevmbot-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - drevmbot-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: drevmbot-backend
+    environment:
+      DATABASE_URL: postgresql://drevmbot:drevmbot_password@postgres:5432/drevmbot
+      REDIS_URL: redis://redis:6379/0
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - drevmbot-network
+    volumes:
+      - ./backend:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: drevmbot-frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    networks:
+      - drevmbot-network
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev -- --host
+
+  # Celery Worker (pour alertes automatiques)
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: drevmbot-celery
+    environment:
+      DATABASE_URL: postgresql://drevmbot:drevmbot_password@postgres:5432/drevmbot
+      REDIS_URL: redis://redis:6379/0
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - drevmbot-network
+    volumes:
+      - ./backend:/app
+    command: celery -A app.workers.alert_worker worker --loglevel=info
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  drevmbot-network:
+    driver: local
