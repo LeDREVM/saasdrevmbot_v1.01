@@ -1,0 +1,38 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Netlify — saasDrevmBot Frontend (SvelteKit)
+# Seul le frontend SvelteKit est déployé ici.
+# Le backend FastAPI et GoldyXbOT (Express)
+# doivent être hébergés séparément (Railway, Render, VPS).
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[build]
+  # Dossier de base : le frontend SvelteKit
+  base    = "frontend"
+  command = "npm install && npm run build"
+  publish = "build"
+
+[build.environment]
+  NODE_VERSION = "20"
+  # ⚠️  Remplacer par l'URL réelle de ton backend FastAPI déployé
+  # Ex: https://saasdrevmbot.railway.app
+  VITE_API_URL = "https://your-backend-url.railway.app"
+
+# ── SPA Fallback (SvelteKit adapter-static) ───────────────────────────────────
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
+
+# ── Headers sécurité ─────────────────────────────────────────────────────────
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options          = "SAMEORIGIN"
+    X-Content-Type-Options   = "nosniff"
+    X-XSS-Protection         = "1; mode=block"
+    Referrer-Policy          = "strict-origin-when-cross-origin"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

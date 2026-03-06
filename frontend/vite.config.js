@@ -26,14 +26,6 @@ export default defineConfig({
 		target: 'esnext',
 		minify: 'esbuild',
 		sourcemap: false,
-		rollupOptions: {
-			output: {
-				manualChunks: {
-					'chart': ['chart.js'],
-					'date': ['date-fns']
-				}
-			}
-		},
 		chunkSizeWarningLimit: 1000
 	},
 	

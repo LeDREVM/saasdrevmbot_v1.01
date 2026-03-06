@@ -94,12 +94,8 @@
 </script>
 
 <svelte:head>
-  <title>SaaS DrevmBot - Trading Forex Intelligent</title>
+  <title>saasDrevmBot — Trading Forex Intelligent</title>
   <meta name="description" content="Système d'alertes intelligent pour le trading Forex avec analyse du calendrier économique" />
-</svelte:head>
-
-<svelte:head>
-  <title>DrevmBot - Trading Assistant</title>
 </svelte:head>
 
 <div class="home-container">
