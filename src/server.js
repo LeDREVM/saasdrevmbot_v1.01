@@ -19,6 +19,7 @@ const { parseForexFactoryTime, isWithinMinutes } = require('./utils/timeUtils');
 const saasApi        = require('./services/saasApi');
 const { exportDailyCalendar, updateDailyResults, updateIndex, REPORTS_DIR } = require('./services/nextcloudExport');
 const marketData     = require('./services/marketData');
+const { logEvent, buildCorrelationDashboard } = require('./services/correlationEngine');
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -109,6 +110,20 @@ app.get('/api/saas/correlation', async (_req, res) => {
       return res.status(503).json({ error: 'saasDrevmbot non disponible' });
     }
     const data = await saasApi.getCorrelationScore();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Corrélations locales (yahoo-finance2 + eventStore persistant) ─────────────
+app.get('/api/stats/correlations', async (req, res) => {
+  try {
+    const symbol   = ((req.query.symbol ?? 'DJI')).toUpperCase();
+    const daysBack = Math.min(Math.max(parseInt(req.query.days ?? '30', 10), 7), 90);
+    const force    = req.query.force === 'true';
+
+    const data = await buildCorrelationDashboard(symbol, daysBack, force);
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -282,6 +297,7 @@ async function scrapeAndNotify() {
       const notify    = event.impactLevel >= MIN_IMPACT;
 
       upsertEvent(enriched);
+      logEvent(enriched); // Persiste l'événement pour l'analyse de corrélation historique
 
       // Rappel (seulement pour les événements MIN_IMPACT)
       if (notify && REMINDER_MINUTES > 0 && eventTime && isWithinMinutes(eventTime, REMINDER_MINUTES) && !isReminderSent(event.id)) {

@@ -2,3 +2,7 @@ node_modules/
 .env
 *.log
 .cache/
+
+# Corrélation Engine — Cache prix Yahoo Finance (régénéré automatiquement)
+data/price_cache/
+# events_log.json est intentionnellement versionné (données historiques précieuses)
