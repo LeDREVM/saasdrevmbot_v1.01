@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GoldyXbOT — Calendrier Économique</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Scanline overlay -->
+  <div class="scanlines" aria-hidden="true"></div>
+  <!-- Noise overlay -->
+  <div class="noise" aria-hidden="true"></div>
+
+  <!-- ── HEADER ── -->
+  <header class="header">
+    <div class="header-left">
+      <div class="logo">
+        <span class="logo-icon">◈</span>
+        <span class="logo-text">GOLDY<em>X</em>BOT</span>
+        <span class="logo-version">v2.0</span>
+      </div>
+      <div class="live-badge" id="liveBadge">
+        <span class="live-dot"></span>
+        <span>LIVE</span>
+      </div>
+    </div>
+
+    <div class="header-stats">
+      <div class="stat-pill" id="statHigh">
+        <span class="stat-icon">🔴</span>
+        <span class="stat-value" id="countHigh">0</span>
+        <span class="stat-label">Fort impact</span>
+      </div>
+      <div class="stat-pill" id="statMed">
+        <span class="stat-icon">🟠</span>
+        <span class="stat-value" id="countMed">0</span>
+        <span class="stat-label">Moyen</span>
+      </div>
+      <div class="stat-pill" id="statLow">
+        <span class="stat-icon">🟡</span>
+        <span class="stat-value" id="countLow">0</span>
+        <span class="stat-label">Faible</span>
+      </div>
+      <div class="stat-pill next-event-pill">
+        <span class="stat-icon">⏱</span>
+        <span class="stat-value" id="nextEventTime">—</span>
+        <span class="stat-label" id="nextEventName">Prochaine</span>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <div class="clock" id="clock">00:00:00</div>
+      <div class="scan-status" id="scanStatus">
+        <span class="scan-dot"></span>
+        <span id="scanLabel">En attente...</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── US30 MARKET BAR ── -->
+  <div class="market-bar" id="marketBar">
+    <!-- Prix US30 -->
+    <div class="mb-block mb-price-block">
+      <div class="mb-instrument">
+        <span>🇺🇸</span>
+        <span class="mb-name">US30</span>
+        <span class="mb-sub">DJIA</span>
+      </div>
+      <div class="mb-price" id="us30Price">——</div>
+      <div class="mb-change" id="us30Change">——</div>
+      <div class="mb-hl">
+        <span>H&nbsp;<span id="us30High">—</span></span>
+        <span>L&nbsp;<span id="us30Low">—</span></span>
+        <span>Veille&nbsp;<span id="us30Prev">—</span></span>
+      </div>
+    </div>
+
+    <!-- VIX -->
+    <div class="mb-block mb-vix-block">
+      <div class="mb-label">VIX</div>
+      <div class="mb-vix-val" id="vixValue">—</div>
+      <div class="mb-vix-chg" id="vixChange">—</div>
+    </div>
+
+    <!-- Séparateur -->
+    <div class="mb-sep"></div>
+
+    <!-- Fenêtre de trading -->
+    <div class="mb-block mb-window-block">
+      <div class="mb-label">FENÊTRE SCALP</div>
+      <div class="trading-window" id="tradingWindow">
+        <span class="tw-dot" id="twDot"></span>
+        <span class="tw-status" id="twStatus">Calcul…</span>
+      </div>
+      <div class="tw-detail" id="twDetail"></div>
+    </div>
+
+    <!-- Séparateur -->
+    <div class="mb-sep"></div>
+
+    <!-- Session NYSE -->
+    <div class="mb-block mb-session-block">
+      <div class="mb-label">SESSION NYSE</div>
+      <div class="session-badge" id="sessionBadge">—</div>
+      <div class="session-times">
+        <div>🗽 <span id="nyTime">—</span> <span class="session-tz">ET</span></div>
+        <div>🇫🇷 <span id="parisTime">—</span> <span class="session-tz">FR</span></div>
+      </div>
+      <div class="session-countdown" id="sessionCountdown"></div>
+    </div>
+
+    <!-- Séparateur -->
+    <div class="mb-sep"></div>
+
+    <!-- Prochain événement US -->
+    <div class="mb-block mb-nextevent-block">
+      <div class="mb-label">PROCHAIN US</div>
+      <div class="mb-nextevent-time" id="nextUsTime">—</div>
+      <div class="mb-nextevent-name" id="nextUsName">Aucun</div>
+      <div class="mb-nextevent-impact" id="nextUsImpact"></div>
+    </div>
+  </div>
+
+  <!-- ── TAB BAR ── -->
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="calendar">
+      <span class="tab-icon">📅</span>
+      <span class="tab-label">CALENDRIER</span>
+    </button>
+    <button class="tab-btn" data-tab="chart">
+      <span class="tab-icon">📈</span>
+      <span class="tab-label">GRAPHIQUE US30</span>
+    </button>
+  </div>
+
+  <!-- ── PANEL CALENDRIER ── -->
+  <div id="panelCalendar" class="tab-panel">
+
+  <!-- ── FILTERS ── -->
+  <div class="filters-bar">
+    <div class="filter-group">
+      <label class="filter-label">IMPACT</label>
+      <div class="filter-chips" id="impactFilters">
+        <button class="chip chip-red active" data-impact="3">🔴 Fort</button>
+        <button class="chip chip-orange active" data-impact="2">🟠 Moyen</button>
+        <button class="chip chip-yellow active" data-impact="1">🟡 Faible</button>
+      </div>
+    </div>
+
+    <div class="filter-group">
+      <label class="filter-label">DEVISE</label>
+      <div class="filter-chips" id="currencyFilters">
+        <button class="chip active" data-currency="ALL">Toutes</button>
+        <button class="chip" data-currency="USD">🇺🇸 USD</button>
+        <button class="chip" data-currency="EUR">🇪🇺 EUR</button>
+        <button class="chip" data-currency="GBP">🇬🇧 GBP</button>
+        <button class="chip" data-currency="JPY">🇯🇵 JPY</button>
+        <button class="chip" data-currency="CAD">🇨🇦 CAD</button>
+        <button class="chip" data-currency="AUD">🇦🇺 AUD</button>
+        <button class="chip" data-currency="CHF">🇨🇭 CHF</button>
+        <button class="chip" data-currency="NZD">🇳🇿 NZD</button>
+      </div>
+    </div>
+
+    <div class="filter-group filter-group-right">
+      <label class="filter-label">SOURCE</label>
+      <div class="filter-chips">
+        <button class="chip active" data-source="ALL">Toutes</button>
+        <button class="chip" data-source="ForexFactory">ForexFactory</button>
+        <button class="chip" data-source="Investing">Investing</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── MAIN LAYOUT ── -->
+  <div class="main-layout">
+
+    <!-- ── TABLE AREA ── -->
+    <main class="table-area">
+      <div class="table-header-row">
+        <h2 class="section-title">ANNONCES ÉCONOMIQUES <span id="tableCount" class="count-badge">0</span></h2>
+        <div class="table-actions">
+          <button class="action-btn" id="btnRefresh">
+            <span class="btn-icon">⟳</span> Rafraîchir
+          </button>
+        </div>
+      </div>
+
+      <div class="table-wrapper">
+        <table class="eco-table" id="ecoTable">
+          <thead>
+            <tr>
+              <th class="col-time">HEURE</th>
+              <th class="col-currency">DEVISE</th>
+              <th class="col-event">ÉVÉNEMENT <span class="col-us30-hint">⚡US30</span></th>
+              <th class="col-impact">IMPACT</th>
+              <th class="col-forecast">PRÉVISION</th>
+              <th class="col-previous">PRÉCÉDENT</th>
+              <th class="col-actual">RÉSULTAT</th>
+              <th class="col-source">SOURCE</th>
+            </tr>
+          </thead>
+          <tbody id="ecoTableBody">
+            <tr class="empty-row">
+              <td colspan="8">
+                <div class="empty-state">
+                  <div class="empty-spinner"></div>
+                  <span>Scan en cours...</span>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+
+    <!-- ── SIDEBAR ── -->
+    <aside class="sidebar">
+
+      <!-- TradingView US30 Chart -->
+      <div class="sidebar-section sidebar-chart-section">
+        <h3 class="sidebar-title">
+          <span class="sidebar-icon">📈</span> US30 — GRAPHIQUE
+        </h3>
+        <div class="tradingview-widget-container">
+          <div class="tradingview-widget-container__widget"></div>
+          <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+          {
+            "symbol": "DJI",
+            "width": "100%",
+            "height": 200,
+            "locale": "fr",
+            "dateRange": "1D",
+            "colorTheme": "dark",
+            "isTransparent": true,
+            "autosize": true,
+            "largeChartUrl": ""
+          }
+          </script>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <h3 class="sidebar-title">
+          <span class="sidebar-icon">◉</span> DERNIÈRES ANNONCES
+        </h3>
+        <div class="news-feed" id="newsFeed">
+          <div class="news-empty">En attente de données...</div>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <h3 class="sidebar-title">
+          <span class="sidebar-icon">◈</span> STATISTIQUES
+        </h3>
+        <div class="stats-grid" id="statsGrid">
+          <div class="stats-item">
+            <span class="stats-label">Total annonces</span>
+            <span class="stats-value" id="statTotal">0</span>
+          </div>
+          <div class="stats-item">
+            <span class="stats-label">Avec résultat</span>
+            <span class="stats-value" id="statWithResult">0</span>
+          </div>
+          <div class="stats-item">
+            <span class="stats-label">Dernier scan</span>
+            <span class="stats-value" id="statLastScan">—</span>
+          </div>
+          <div class="stats-item">
+            <span class="stats-label">Discord</span>
+            <span class="stats-value" id="statDiscord">—</span>
+          </div>
+          <div class="stats-item">
+            <span class="stats-label">saasDrevmbot</span>
+            <span class="stats-value" id="statSaas">—</span>
+          </div>
+          <div class="stats-item stats-item-wide">
+            <span class="stats-label">Nextcloud</span>
+            <span class="stats-value" id="statNextcloud">—</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar-section" id="nextcloudSection" style="display:none">
+        <h3 class="sidebar-title">
+          <span class="sidebar-icon">☁</span> NEXTCLOUD SYNC
+        </h3>
+        <div class="sync-log" id="syncLog">
+          <div class="news-empty">En attente de sync...</div>
+        </div>
+        <button class="action-btn action-btn-full" id="btnExportNow">
+          <span class="btn-icon">↑</span> Exporter maintenant
+        </button>
+      </div>
+
+      <div class="sidebar-section">
+        <h3 class="sidebar-title">
+          <span class="sidebar-icon">▸</span> DEVISES ACTIVES
+        </h3>
+        <div class="currency-bars" id="currencyBars"></div>
+      </div>
+    </aside>
+  </div>
+
+  </div><!-- /panelCalendar -->
+
+  <!-- ── PANEL GRAPHIQUE ── -->
+  <div id="panelChart" class="tab-panel" style="display:none">
+    <div class="chart-fullscreen">
+      <div class="chart-toolbar">
+        <div class="chart-toolbar-left">
+          <span class="chart-instrument">🇺🇸 US30 — DJIA</span>
+          <div class="chart-interval-btns">
+            <button class="ci-btn active" data-interval="1">1m</button>
+            <button class="ci-btn" data-interval="5">5m</button>
+            <button class="ci-btn" data-interval="15">15m</button>
+            <button class="ci-btn" data-interval="60">1h</button>
+            <button class="ci-btn" data-interval="D">1D</button>
+          </div>
+        </div>
+        <div class="chart-toolbar-right">
+          <span class="chart-data-source">TradingView</span>
+        </div>
+      </div>
+      <div id="tradingview_advanced_chart" class="tv-chart-container"></div>
+    </div>
+  </div>
+
+  <!-- ── TOAST CONTAINER ── -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
