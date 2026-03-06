@@ -49,6 +49,20 @@ const server = http.createServer(app);
 const io     = new Server(server, { cors: { origin: '*' } });
 
 app.use(express.json());
+
+// ─── Routing pages ────────────────────────────────────────────────────────────
+
+// Page d'accueil hub — Centre de Contrôle
+app.get('/', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'home.html'));
+});
+
+// Dashboard économique GoldyXbOT
+app.get('/dashboard', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Fichiers statiques (css, js, fonts, images…)
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ─── REST API ─────────────────────────────────────────────────────────────────
@@ -112,6 +126,59 @@ app.post('/api/nextcloud/export', async (_req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ── Status global système (agrégation de tous les services) ───────────────────
+app.get('/api/system/status', async (_req, res) => {
+  const events   = getAllEvents();
+  const highCount = events.filter(e => e.impactLevel >= 3).length;
+  const medCount  = events.filter(e => e.impactLevel === 2).length;
+  const lowCount  = events.filter(e => e.impactLevel === 1).length;
+
+  // Vérifier FastAPI
+  let apiStatus = 'offline';
+  const saasUrl = process.env.SAAS_API_URL || 'http://localhost:8000';
+  try {
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 2000);
+    const r = await fetch(`${saasUrl}/health`, { signal: ctrl.signal });
+    if (r.ok) apiStatus = 'online';
+  } catch {}
+
+  // Données marché en cache
+  let market = null;
+  try { market = await marketData.getUS30(); } catch {}
+
+  res.json({
+    goldyxbot: {
+      status:          'online',
+      port:            PORT,
+      discordEnabled:  WEBHOOK_URLS.length > 0,
+      nextcloudEnabled: ENABLE_NEXTCLOUD,
+      events: { high: highCount, medium: medCount, low: lowCount, total: events.length },
+    },
+    saasApi: {
+      status: apiStatus,
+      port:   8000,
+      url:    saasUrl,
+    },
+    sources: {
+      forexfactory: ENABLE_FF,
+      investing:    ENABLE_INV,
+      saas:         ENABLE_SAAS,
+    },
+    config: {
+      minImpact:       MIN_IMPACT,
+      currencies:      CURRENCIES,
+      timezone:        TIMEZONE,
+      checkInterval:   CHECK_INTERVAL,
+      reminderMinutes: REMINDER_MINUTES,
+      discordEnabled:  WEBHOOK_URLS.length > 0,
+      nextcloudEnabled: ENABLE_NEXTCLOUD,
+    },
+    market,
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // Données marché US30 / DJIA

@@ -1368,3 +1368,27 @@ body {
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
+
+/* ── Bouton retour HUB ─────────────────────────────────────────────────────── */
+.home-btn {
+  display: flex; align-items: center; gap: 5px;
+  padding: 5px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.1em;
+  text-decoration: none;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+.home-btn:hover {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  background: rgba(0, 212, 255, 0.07);
+}
+.home-btn-label { display: none; }
+@media (min-width: 640px) { .home-btn-label { display: inline; } }
