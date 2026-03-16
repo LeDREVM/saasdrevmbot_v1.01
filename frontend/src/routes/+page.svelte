@@ -4,7 +4,7 @@
   import TradingViewPanel from '$lib/components/TradingViewPanel.svelte';
   
   // Configuration de l'API (utilise l'env var ou localhost)
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
   
   let stats = {
     backend: { status: 'checking', url: API_URL },
