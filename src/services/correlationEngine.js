@@ -19,6 +19,9 @@ const YahooFinance = require('yahoo-finance2').default;
 
 const yahooFinance = new YahooFinance({ suppressNotices: ['yahooSurvey'] });
 
+// Retourne n si fini, sinon la valeur de repli (évite Infinity/NaN dans le JSON)
+const safeN = (n, fallback = 0) => (Number.isFinite(n) ? n : fallback);
+
 // ─── Chemins ──────────────────────────────────────────────────────────────────
 
 const DATA_DIR  = path.join(__dirname, '../../data');
@@ -338,8 +341,8 @@ async function buildCorrelationDashboard(symbol = 'DJI', daysBack = 30, force = 
   const total    = results.length;
   const impacted = results.filter(r => r.had_impact);
 
-  const impact_rate        = Math.round((impacted.length / total) * 100);
-  const avg_movement_pips  = Math.round(results.reduce((s, r) => s + r.movement_pips, 0) / total * 10) / 10;
+  const impact_rate        = safeN(Math.round((impacted.length / total) * 100));
+  const avg_movement_pips  = safeN(Math.round(results.reduce((s, r) => s + safeN(r.movement_pips), 0) / total * 10) / 10);
   const direction_stats    = {
     up:      results.filter(r => r.direction === 'up').length,
     down:    results.filter(r => r.direction === 'down').length,
@@ -349,13 +352,13 @@ async function buildCorrelationDashboard(symbol = 'DJI', daysBack = 30, force = 
   // Volatilité : ratio mouvement events impactés vs events calmes
   const quietResults  = results.filter(r => !r.had_impact);
   const impactedAvg   = impacted.length > 0
-    ? impacted.reduce((s, r) => s + r.movement_pips, 0) / impacted.length
+    ? safeN(impacted.reduce((s, r) => s + safeN(r.movement_pips), 0) / impacted.length, avg_movement_pips)
     : avg_movement_pips;
   const quietAvg      = quietResults.length > 0
-    ? quietResults.reduce((s, r) => s + r.movement_pips, 0) / quietResults.length
+    ? safeN(quietResults.reduce((s, r) => s + safeN(r.movement_pips), 0) / quietResults.length, avg_movement_pips * 0.3)
     : avg_movement_pips * 0.3;
   const volatility_increase = quietAvg > 0
-    ? Math.round(((impactedAvg - quietAvg) / quietAvg) * 100)
+    ? safeN(Math.round(((impactedAvg - quietAvg) / quietAvg) * 100))
     : 0;
 
   // ── By Event Type → CorrelationTable ─────────────────────────────────────
@@ -377,8 +380,8 @@ async function buildCorrelationDashboard(symbol = 'DJI', daysBack = 30, force = 
         name,
         {
           count:      d.count,
-          avg_pips:   Math.round(d.total_pips   / d.count * 10) / 10,
-          avg_impact: Math.round(d.total_impact / d.count * 100) / 100,
+          avg_pips:   safeN(Math.round(d.total_pips   / d.count * 10) / 10),
+          avg_impact: safeN(Math.round(d.total_impact / d.count * 100) / 100),
         },
       ])
       .sort(([, a], [, b]) => b.avg_pips - a.avg_pips)
