@@ -5,7 +5,8 @@
       "Bash(node -e \"const yf = require\\(''yahoo-finance2''\\); console.log\\(Object.keys\\(yf\\).slice\\(0,10\\)\\); console.log\\(typeof yf\\);\")",
       "Bash(node -e \"const yf = require\\(''yahoo-finance2''\\).default; console.log\\(typeof yf\\); console.log\\(typeof yf.quote\\);\")",
       "Bash(node -e \"const YahooFinance = require\\(''yahoo-finance2''\\).default; const yf = new YahooFinance\\(\\); console.log\\(typeof yf.quote\\);\")",
-      "Bash(git add .gitignore README.md)"
+      "Bash(git add .gitignore README.md)",
+      "Bash(find C:/Users/ardja/Documents/CODING/GoldyXbOT/frontend -maxdepth 3 -type f -name svelte.config.js -o -name package.json -o -name .env*)"
     ]
   }
 }
