@@ -10,6 +10,7 @@ from app.services.alerts.alert_predictor import AlertPredictor
 from app.services.alerts.notification_manager import NotificationManager
 from app.services.alerts.markdown_exporter import MarkdownExporter
 from app.services.economic_calendar.calendar_aggregator import CalendarAggregator
+from app.services.watchlist.watchlist_service import WatchlistService
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ notifier = NotificationManager(
 )
 exporter = MarkdownExporter(output_dir="/mnt/user-data/outputs/reports")
 calendar_aggregator = CalendarAggregator()
+watchlist_service = WatchlistService()
 
 # === TÂCHES PLANIFIÉES ===
 
@@ -202,6 +204,80 @@ def export_monthly_stats():
     finally:
         db.close()
 
+
+@celery_app.task(name="watchlist_daily_snapshot")
+def watchlist_daily_snapshot():
+    """
+    Snapshot quotidien de la watchlist à 6h (heure Guadeloupe):
+    - lit le CSV de portefeuille
+    - récupère les quotes "temps réel"
+    - génère un rapport Markdown (Nextcloud)
+    - envoie un résumé rapide sur Discord
+    """
+
+    logger.info("📋 Génération snapshot quotidien watchlist...")
+
+    try:
+        snapshots = watchlist_service.fetch_realtime_snapshot()
+        if not snapshots:
+            logger.info("Aucune donnée de watchlist à envoyer")
+            return
+
+        # Générer rapport Markdown (+ upload Nextcloud)
+        today = datetime.now().strftime("%Y-%m-%d")
+        filepath = exporter.export_watchlist_snapshot(snapshots, today)
+        logger.info(f"📝 Snapshot watchlist généré: {filepath}")
+
+        # Résumé Discord simple (top 5 par % variation)
+        try:
+            sorted_snaps = sorted(
+                snapshots,
+                key=lambda s: abs(s.get("change_percent", 0)),
+                reverse=True,
+            )
+            top = sorted_snaps[:5]
+
+            lines = []
+            for s in top:
+                name = s.get("name", "")
+                backend = s.get("backend_symbol", "")
+                last = s.get("last", 0)
+                chg = s.get("change", 0)
+                chg_pct = s.get("change_percent", 0)
+                sign = "+" if chg >= 0 else ""
+                emoji = "📈" if chg > 0 else "📉" if chg < 0 else "➖"
+                lines.append(
+                    f"{emoji} **{name}** (`{backend}`) → {last} ({sign}{chg} | {sign}{chg_pct}%)"
+                )
+
+            summary = "\n".join(lines)
+
+            payload = {
+                "username": "📋 Watchlist Snapshot",
+                "content": (
+                    f"🕕 Snapshot quotidien de la watchlist (6h Guadeloupe)\n\n{summary}\n\n"
+                    f"_Rapport détaillé synchronisé dans Nextcloud._"
+                ),
+            }
+
+            import requests
+
+            if settings.DISCORD_WEBHOOK_URL:
+                resp = requests.post(settings.DISCORD_WEBHOOK_URL, json=payload, timeout=10)
+                if resp.status_code == 204:
+                    logger.info("✅ Résumé watchlist envoyé sur Discord")
+                else:
+                    logger.error(
+                        f"Erreur Discord watchlist: {resp.status_code} - {resp.text}"
+                    )
+            else:
+                logger.warning("DISCORD_WEBHOOK_URL non configuré pour watchlist_daily_snapshot")
+        except Exception as e:
+            logger.error(f"Erreur envoi Discord watchlist: {e}")
+
+    except Exception as e:
+        logger.error(f"Erreur watchlist_daily_snapshot: {e}")
+
 # === CONFIGURATION DES HORAIRES ===
 
 celery_app.conf.beat_schedule = {
@@ -220,6 +296,10 @@ celery_app.conf.beat_schedule = {
     'export-monthly-stats-first-day': {
         'task': 'export_monthly_stats',
         'schedule': crontab(day_of_month=1, hour=8, minute=0),  # 1er du mois 8h
+    },
+    'watchlist-daily-snapshot-6am': {
+        'task': 'watchlist_daily_snapshot',
+        'schedule': crontab(hour=6, minute=0),  # 6h du matin (America/Guadeloupe)
     },
 }
 

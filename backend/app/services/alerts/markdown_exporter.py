@@ -26,6 +26,66 @@ class MarkdownExporter:
                 self.uploader = None
         else:
             self.uploader = None
+
+    def export_watchlist_snapshot(
+        self,
+        snapshots: List[Dict],
+        date: str,
+    ) -> str:
+        """
+        Génère un snapshot quotidien de la watchlist (quotes "temps réel").
+        """
+        filename = f"watchlist_snapshot_{date}.md"
+        filepath = os.path.join(self.output_dir, filename)
+
+        md_lines = [
+            "---",
+            f"title: Watchlist Snapshot {date}",
+            f"date: {date}",
+            "tags: [trading, watchlist, daily]",
+            "---",
+            "",
+            "# 📋 WATCHLIST QUOTIDIENNE",
+            "",
+            f"**Date:** {date}",
+            f"**Généré:** {datetime.now().strftime('%d/%m/%Y à %H:%M')}",
+            "",
+            "---",
+            "",
+            "## 🧾 Tableau des instruments",
+            "",
+            "| Nom | Symbole (CSV) | Symbole (backend) | Dernier | Var. | Var. % | Marché | Heure |",
+            "|-----|---------------|-------------------|---------|------|--------|--------|-------|",
+        ]
+
+        for s in snapshots:
+            name = s.get("name", "")
+            orig = s.get("original_symbol", "")
+            backend = s.get("backend_symbol", "")
+            last = s.get("last", 0)
+            change = s.get("change", 0)
+            change_pct = s.get("change_percent", 0)
+            ex = s.get("exchange", "")
+            ts = s.get("timestamp", "")
+
+            sign = "+" if change >= 0 else ""
+            md_lines.append(
+                f"| {name} | `{orig}` | `{backend}` | {last} | {sign}{change} | {sign}{change_pct}% | {ex} | {ts} |"
+            )
+
+        md_content = "\n".join(md_lines)
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(md_content)
+
+        if self.uploader:
+            try:
+                self.uploader.upload_file(filepath)
+                logger.info(f"📤 Watchlist snapshot uploadé vers Nextcloud: {filename}")
+            except Exception as e:
+                logger.warning(f"Erreur upload Nextcloud (watchlist): {e}")
+
+        return filepath
     
     def export_daily_predictions(
         self,

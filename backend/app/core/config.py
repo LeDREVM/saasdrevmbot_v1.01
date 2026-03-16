@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     
     # Cache
     CACHE_TTL: int = 3600  # 1 heure
+
+    # Watchlist (CSV Investing.com export)
+    WATCHLIST_CSV_PATH: Optional[str] = "Portefeuille_Watchlist_03162026.csv"
     
     class Config:
         env_file = ".env"

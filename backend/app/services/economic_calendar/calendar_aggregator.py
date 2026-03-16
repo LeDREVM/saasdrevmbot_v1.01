@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import logging
 from .forexfactory_scraper import ForexFactoryScraper
 from .investing_scraper import InvestingScraper
+from .yahoo_scraper import YahooCalendarScraper
 from .base_scraper import EconomicEvent
 
 logger = logging.getLogger(__name__)
@@ -13,6 +14,7 @@ class CalendarAggregator:
     def __init__(self):
         self.ff_scraper = ForexFactoryScraper()
         self.inv_scraper = InvestingScraper()
+        self.yh_scraper = YahooCalendarScraper()
     
     def get_today_events(self, currencies: List[str] = None) -> List[EconomicEvent]:
         """Récupère tous les événements du jour"""
@@ -20,12 +22,13 @@ class CalendarAggregator:
         logger.info("🔄 Agrégation calendrier du jour...")
         today = datetime.now()
         
-        # Scrape les 2 sources en parallèle (optionnel: utiliser asyncio)
+        # Scrape les 3 sources (ForexFactory, Investing, Yahoo)
         ff_events = self.ff_scraper.scrape_day(today)
         inv_events = self.inv_scraper.scrape_day(today)
+        yh_events = self.yh_scraper.scrape_day(today)
         
         # Fusion et déduplication
-        all_events = self._merge_events(ff_events, inv_events)
+        all_events = self._merge_events(ff_events, inv_events, yh_events)
         
         # Filtrer par devises si spécifié
         if currencies:
@@ -44,8 +47,9 @@ class CalendarAggregator:
         
         ff_events = self.ff_scraper.scrape_week()
         inv_events = self.inv_scraper.scrape_week()
+        yh_events = self.yh_scraper.scrape_week()
         
-        all_events = self._merge_events(ff_events, inv_events)
+        all_events = self._merge_events(ff_events, inv_events, yh_events)
         
         if currencies:
             all_events = [e for e in all_events if e.currency in currencies]
@@ -71,34 +75,49 @@ class CalendarAggregator:
         return upcoming
     
     def _merge_events(self, ff_events: List[EconomicEvent], 
-                     inv_events: List[EconomicEvent]) -> List[EconomicEvent]:
+                     inv_events: List[EconomicEvent],
+                     yh_events: List[EconomicEvent]) -> List[EconomicEvent]:
         """
         Fusionne et déduplique les événements
         Priorité: ForexFactory (plus fiable pour forex)
         """
         
         # Index FF events par (date, time, currency, event name similarity)
-        ff_index = {
+        idx = {
             (e.date, e.time, e.currency, e.event.lower()[:30]): e 
             for e in ff_events
         }
         
         merged = list(ff_events)
         
-        # Ajouter Investing events non-dupliqués
+        # Ajouter / enrichir à partir d'Investing
         for inv_event in inv_events:
             key = (inv_event.date, inv_event.time, inv_event.currency, 
                    inv_event.event.lower()[:30])
             
-            if key not in ff_index:
-                # Pas de doublon trouvé, ajouter
+            if key not in idx:
                 merged.append(inv_event)
+                idx[key] = inv_event
             else:
-                # Event existe dans FF, enrichir avec données Investing si meilleures
-                ff_event = ff_index[key]
-                if not ff_event.actual and inv_event.actual:
-                    ff_event.actual = inv_event.actual
-                if not ff_event.forecast and inv_event.forecast:
-                    ff_event.forecast = inv_event.forecast
+                base = idx[key]
+                if not base.actual and inv_event.actual:
+                    base.actual = inv_event.actual
+                if not base.forecast and inv_event.forecast:
+                    base.forecast = inv_event.forecast
+        
+        # Ajouter / enrichir à partir de Yahoo
+        for yh_event in yh_events:
+            key = (yh_event.date, yh_event.time, yh_event.currency, 
+                   yh_event.event.lower()[:30])
+            
+            if key not in idx:
+                merged.append(yh_event)
+                idx[key] = yh_event
+            else:
+                base = idx[key]
+                if not base.actual and yh_event.actual:
+                    base.actual = yh_event.actual
+                if not base.forecast and yh_event.forecast:
+                    base.forecast = yh_event.forecast
         
         return merged
