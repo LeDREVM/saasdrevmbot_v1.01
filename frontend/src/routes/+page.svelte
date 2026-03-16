@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import TradingEconomicsWidget from './TradingEconomicsWidget.svelte';
+  import TradingViewPanel from '$lib/components/TradingViewPanel.svelte';
   
   // Configuration de l'API (utilise l'env var ou localhost)
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -161,9 +162,16 @@
     </div>
   </section>
 
-  <!-- Trading Economics Widget -->
-  <section class="trading-economics-section">
-    <TradingEconomicsWidget />
+  <!-- Trading Dashboard : TradingView + Calendrier -->
+  <section class="trading-dashboard">
+    <div class="trading-grid">
+      <div class="trading-grid-item">
+        <TradingViewPanel />
+      </div>
+      <div class="trading-grid-item">
+        <TradingEconomicsWidget />
+      </div>
+    </div>
   </section>
 
   <!-- Stats Section -->
@@ -847,8 +855,19 @@
   }
 
   /* Footer */
-  .trading-economics-section {
+  .trading-dashboard {
     margin: 3rem 0;
+  }
+
+  .trading-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+    gap: 1.5rem;
+    align-items: stretch;
+  }
+
+  .trading-grid-item {
+    min-width: 0;
   }
 
   .footer {
@@ -937,6 +956,10 @@
 
     .stats-grid {
       grid-template-columns: repeat(2, 1fr);
+    }
+
+    .trading-grid {
+      grid-template-columns: 1fr;
     }
   }
 </style>
