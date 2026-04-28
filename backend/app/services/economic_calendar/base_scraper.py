@@ -71,3 +71,15 @@ class BaseEconomicScraper(ABC):
     def scrape_week(self) -> List[EconomicEvent]:
         """Récupère les événements de la semaine"""
         pass
+
+
+class BaseScraper:
+    """
+    Base minimale pour les scrapers qui renvoient des structures dict
+    (ex. TradingEconomicsScraper), distincte de BaseEconomicScraper / EconomicEvent.
+    """
+
+    def __init__(self):
+        self.headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
