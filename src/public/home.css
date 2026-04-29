@@ -1,40 +1,60 @@
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    saasDrevmBot — Home / Hub Page Styles
-   Aesthetic: Bloomberg Terminal × Cyberpunk
+   Aesthetic: Steampunk Tropical
+   Laiton industriel · Jungle profonde · Cuivre · Turquoise des mers
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
 :root {
-  --bg-base:       #080b10;
-  --bg-surface:    #0d1117;
-  --bg-elevated:   #13181f;
-  --bg-card:       #161c24;
-  --bg-hover:      #1c242e;
+  /* ── Fonds ── */
+  --bg-base:       #0e1208;
+  --bg-surface:    #141a09;
+  --bg-elevated:   #1a2210;
+  --bg-card:       #1f2a12;
+  --bg-hover:      #273516;
 
-  --border:        #1e2a38;
-  --border-bright: #2a3a4e;
+  /* ── Bordures ── */
+  --border:        #3a4a1e;
+  --border-bright: #5a6e2c;
 
-  --text-primary:  #e2eaf4;
-  --text-secondary:#7a92aa;
-  --text-muted:    #3d5066;
+  /* ── Textes ── */
+  --text-primary:  #e8dfc0;
+  --text-secondary:#9a9070;
+  --text-muted:    #4a5030;
 
-  --accent-cyan:   #00d4ff;
-  --accent-glow:   rgba(0, 212, 255, 0.15);
+  /* ── Accent principal : turquoise tropical ── */
+  --accent-cyan:   #2dd6b8;
+  --accent-glow:   rgba(45, 214, 184, 0.15);
 
-  --gold:          #f5c842;
-  --gold-dim:      rgba(245, 200, 66, 0.12);
-  --gold-glow:     rgba(245, 200, 66, 0.25);
+  /* ── Laiton / Or steampunk ── */
+  --gold:          #c8922a;
+  --gold-dim:      rgba(200, 146, 42, 0.14);
+  --gold-glow:     rgba(200, 146, 42, 0.28);
+  --brass:         #d4a843;
+  --brass-light:   #f0cc70;
 
-  --blue:          #3b82f6;
-  --blue-dim:      rgba(59, 130, 246, 0.12);
-  --blue-glow:     rgba(59, 130, 246, 0.25);
+  /* ── Cuivre ── */
+  --copper:        #b56d3a;
+  --copper-dim:    rgba(181, 109, 58, 0.14);
+  --copper-glow:   rgba(181, 109, 58, 0.28);
 
-  --purple:        #a855f7;
-  --purple-dim:    rgba(168, 85, 247, 0.12);
-  --purple-glow:   rgba(168, 85, 247, 0.25);
+  /* ── Vert jungle ── */
+  --jungle:        #4a9e3c;
+  --jungle-dim:    rgba(74, 158, 60, 0.14);
+  --jungle-glow:   rgba(74, 158, 60, 0.28);
 
-  --red:           #ff3b3b;
-  --green:         #00e676;
-  --orange:        #ff8c00;
+  /* ── États ── */
+  --red:           #d94f3a;
+  --green:         #4ac472;
+  --orange:        #e08030;
+
+  /* ── Alias compatibilité ── */
+  --blue:          var(--copper);
+  --blue-dim:      var(--copper-dim);
+  --blue-glow:     var(--copper-glow);
+
+  --purple:        var(--jungle);
+  --purple-dim:    var(--jungle-dim);
+  --purple-glow:   var(--jungle-glow);
 }
 
 /* ─── Reset & Base ────────────────────────────────────────────────────────── */
@@ -53,23 +73,26 @@ html, body {
 a { color: inherit; text-decoration: none; }
 
 /* ─── Overlays atmosphériques ─────────────────────────────────────────────── */
+
+/* Veines de jungle / feuilles en fond */
 .scanlines {
   position: fixed; inset: 0; z-index: 0; pointer-events: none;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(0,0,0,0.08) 2px,
-    rgba(0,0,0,0.08) 4px
-  );
+  background:
+    radial-gradient(ellipse 80% 60% at 10% 20%, rgba(45,214,184,0.04) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 80% at 90% 80%, rgba(74,158,60,0.05) 0%, transparent 55%),
+    radial-gradient(ellipse 40% 40% at 50% 50%, rgba(200,146,42,0.02) 0%, transparent 70%);
 }
+
+/* Texture parchemin / bois */
 .noise {
-  position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.03;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.06;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
 }
+
+/* Vignette jungle profonde */
 .vignette {
   position: fixed; inset: 0; z-index: 0; pointer-events: none;
-  background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.6) 100%);
+  background: radial-gradient(ellipse at center, transparent 50%, rgba(5, 8, 2, 0.7) 100%);
 }
 
 /* ─── HEADER ──────────────────────────────────────────────────────────────── */
@@ -77,32 +100,48 @@ a { color: inherit; text-decoration: none; }
   position: sticky; top: 0; z-index: 100;
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 24px;
-  height: 56px;
-  background: rgba(8, 11, 16, 0.95);
+  height: 60px;
+  background: rgba(14, 18, 8, 0.97);
   backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 2px solid var(--border);
+  box-shadow:
+    0 2px 0 rgba(200,146,42,0.15),
+    0 4px 16px rgba(0,0,0,0.5);
 }
+
+/* Rivets décoratifs steampunk en coin */
+.hub-header::before,
+.hub-header::after {
+  content: '⬡';
+  position: absolute;
+  top: 50%; transform: translateY(-50%);
+  font-size: 14px;
+  color: var(--border-bright);
+  opacity: 0.5;
+}
+.hub-header::before { left: 8px; }
+.hub-header::after  { right: 8px; }
 
 .hub-logo {
   display: flex; align-items: center; gap: 12px;
 }
 .hub-logo-icon {
-  font-size: 22px;
-  color: var(--accent-cyan);
-  text-shadow: 0 0 12px var(--accent-cyan);
-  animation: pulse-icon 3s ease-in-out infinite;
+  font-size: 24px;
+  color: var(--brass);
+  text-shadow: 0 0 12px var(--gold-glow), 0 0 4px rgba(200,146,42,0.8);
+  animation: pulse-icon 4s ease-in-out infinite;
 }
 @keyframes pulse-icon {
-  0%, 100% { text-shadow: 0 0 8px var(--accent-cyan); }
-  50%       { text-shadow: 0 0 20px var(--accent-cyan), 0 0 40px rgba(0,212,255,0.3); }
+  0%, 100% { text-shadow: 0 0 8px var(--gold-glow); color: var(--brass); }
+  50%       { text-shadow: 0 0 24px rgba(200,146,42,0.6), 0 0 48px rgba(45,214,184,0.2); color: var(--brass-light); }
 }
 .hub-logo-name {
   font-family: 'Syne', sans-serif;
   font-size: 18px; font-weight: 800;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
   color: var(--text-primary);
 }
-.hub-logo-name em { color: var(--accent-cyan); font-style: normal; }
+.hub-logo-name em { color: var(--brass); font-style: normal; }
 .hub-logo-sub {
   display: block;
   font-size: 9px; font-weight: 500;
@@ -115,10 +154,11 @@ a { color: inherit; text-decoration: none; }
   display: flex; align-items: center; gap: 8px;
   padding: 6px 16px;
   background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 20px;
+  border: 1px solid var(--border-bright);
+  border-radius: 4px;
   font-size: 11px; letter-spacing: 0.08em;
   color: var(--text-secondary);
+  clip-path: polygon(6px 0%, 100% 0%, calc(100% - 6px) 100%, 0% 100%);
 }
 .system-dot {
   width: 8px; height: 8px; border-radius: 50%;
@@ -134,9 +174,10 @@ a { color: inherit; text-decoration: none; }
 
 .hub-clock {
   font-size: 20px; font-weight: 700;
-  color: var(--accent-cyan);
-  letter-spacing: 0.05em;
+  color: var(--brass);
+  letter-spacing: 0.08em;
   text-align: right;
+  text-shadow: 0 0 10px var(--gold-glow);
 }
 .hub-date {
   font-size: 10px; color: var(--text-muted);
@@ -148,43 +189,71 @@ a { color: inherit; text-decoration: none; }
 /* ─── HERO ────────────────────────────────────────────────────────────────── */
 .hub-hero {
   position: relative; z-index: 1;
-  padding: 32px 24px 20px;
+  padding: 36px 24px 24px;
   border-bottom: 1px solid var(--border);
-  background: linear-gradient(180deg, rgba(0,212,255,0.03) 0%, transparent 100%);
+  background:
+    linear-gradient(180deg, rgba(45,214,184,0.04) 0%, transparent 60%),
+    linear-gradient(135deg, rgba(200,146,42,0.05) 0%, transparent 50%);
+  overflow: hidden;
 }
+
+/* Décoration engrenages steampunk */
+.hub-hero::before {
+  content: '⚙';
+  position: absolute; right: 32px; top: 20px;
+  font-size: 80px;
+  color: var(--border);
+  opacity: 0.18;
+  animation: spin-slow 40s linear infinite;
+  pointer-events: none;
+}
+.hub-hero::after {
+  content: '⚙';
+  position: absolute; right: 80px; top: 50px;
+  font-size: 48px;
+  color: var(--border-bright);
+  opacity: 0.12;
+  animation: spin-slow 25s linear infinite reverse;
+  pointer-events: none;
+}
+@keyframes spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
 .hub-hero-title {
-  font-family: 'Syne', sans-serif;
-  font-size: 22px; font-weight: 800;
-  letter-spacing: 0.12em;
+  font-family: 'Cinzel', 'Syne', serif;
+  font-size: 24px; font-weight: 700;
+  letter-spacing: 0.14em;
   color: var(--text-primary);
   margin-bottom: 6px;
+  text-shadow: 0 0 40px rgba(200,146,42,0.15);
 }
-.hub-hero-title em { color: var(--accent-cyan); font-style: normal; }
+.hub-hero-title em { color: var(--brass); font-style: normal; }
 
 .hub-hero-sub {
-  font-size: 11px; color: var(--text-muted);
+  font-size: 11px; color: var(--text-secondary);
   letter-spacing: 0.1em;
   margin-bottom: 20px;
 }
 
-/* Ticker bar */
+/* Ticker bar — style jauge steampunk */
 .hub-ticker {
   display: flex; align-items: center; gap: 16px;
-  padding: 10px 16px;
+  padding: 12px 18px;
   background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid var(--border-bright);
+  border-top: 2px solid var(--brass);
+  border-radius: 6px;
   overflow-x: auto;
+  box-shadow: inset 0 1px 0 rgba(200,146,42,0.1), 0 4px 12px rgba(0,0,0,0.3);
 }
 .ticker-item {
   display: flex; align-items: center; gap: 8px;
   flex-shrink: 0;
 }
 .ticker-label {
-  font-size: 10px; color: var(--text-muted); letter-spacing: 0.08em;
+  font-size: 10px; color: var(--text-muted); letter-spacing: 0.1em;
 }
 .ticker-price {
-  font-size: 14px; font-weight: 700; color: var(--text-primary);
+  font-size: 14px; font-weight: 700; color: var(--brass-light);
 }
 .ticker-change {
   font-size: 11px; color: var(--text-secondary);
@@ -198,9 +267,10 @@ a { color: inherit; text-decoration: none; }
 /* ─── SECTION LABEL ───────────────────────────────────────────────────────── */
 .hub-section-label {
   font-size: 10px; font-weight: 700;
-  letter-spacing: 0.15em;
-  color: var(--text-muted);
+  letter-spacing: 0.2em;
+  color: var(--brass);
   padding: 20px 24px 12px;
+  text-shadow: 0 0 8px var(--gold-glow);
 }
 
 /* ─── GRID SERVICES ───────────────────────────────────────────────────────── */
@@ -216,53 +286,75 @@ a { color: inherit; text-decoration: none; }
 @media (max-width: 1024px) { .hub-grid { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 640px)  { .hub-grid { grid-template-columns: 1fr; } }
 
-/* ── Service Card ── */
+/* ── Service Card ── Style plaque industrielle / bois tropical */
 .service-card {
   position: relative;
   display: flex; flex-direction: column;
   padding: 20px;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-top: 3px solid var(--border-bright);
+  border-radius: 4px;
   overflow: hidden;
   transition: border-color 0.25s, transform 0.2s, box-shadow 0.25s;
   cursor: pointer;
+  /* Effet métal brossé */
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 6px,
+    rgba(255,255,255,0.008) 6px,
+    rgba(255,255,255,0.008) 7px
+  );
 }
 .service-card:hover {
-  transform: translateY(-3px);
+  transform: translateY(-4px);
 }
+
+/* Coins rivetés */
+.service-card::before,
+.service-card::after {
+  content: '';
+  position: absolute;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--border-bright);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
+}
+.service-card::before { top: 8px; left: 8px; }
+.service-card::after  { top: 8px; right: 8px; }
 
 /* Glow effect */
 .card-glow {
-  position: absolute; inset: 0; border-radius: 12px;
+  position: absolute; inset: 0; border-radius: 4px;
   opacity: 0; transition: opacity 0.3s;
   pointer-events: none;
 }
 .service-card:hover .card-glow { opacity: 1; }
 
-/* Gold card */
-.card-gold              { border-color: rgba(245,200,66,0.3); }
-.card-gold:hover        { border-color: var(--gold); box-shadow: 0 0 24px var(--gold-glow), 0 8px 32px rgba(0,0,0,0.4); }
+/* Gold card — laiton */
+.card-gold              { border-color: rgba(200,146,42,0.4); border-top-color: var(--brass); }
+.card-gold:hover        { border-color: var(--gold); box-shadow: 0 0 28px var(--gold-glow), 0 8px 32px rgba(0,0,0,0.5); }
 .card-gold .card-glow   { background: radial-gradient(ellipse at top left, var(--gold-dim) 0%, transparent 70%); }
 .card-gold .card-dot.online { background: var(--gold); box-shadow: 0 0 8px var(--gold); }
-.card-gold .card-cta    { color: var(--gold); }
-.card-gold .card-name   { color: var(--gold); }
+.card-gold .card-cta    { color: var(--brass); }
+.card-gold .card-name   { color: var(--brass); }
 
-/* Blue card */
-.card-blue              { border-color: rgba(59,130,246,0.3); }
-.card-blue:hover        { border-color: var(--blue); box-shadow: 0 0 24px var(--blue-glow), 0 8px 32px rgba(0,0,0,0.4); }
-.card-blue .card-glow   { background: radial-gradient(ellipse at top left, var(--blue-dim) 0%, transparent 70%); }
-.card-blue .card-dot.online { background: var(--blue); box-shadow: 0 0 8px var(--blue); }
-.card-blue .card-cta    { color: var(--blue); }
-.card-blue .card-name   { color: var(--blue); }
+/* Blue card — cuivre */
+.card-blue              { border-color: rgba(181,109,58,0.4); border-top-color: var(--copper); }
+.card-blue:hover        { border-color: var(--copper); box-shadow: 0 0 28px var(--copper-glow), 0 8px 32px rgba(0,0,0,0.5); }
+.card-blue .card-glow   { background: radial-gradient(ellipse at top left, var(--copper-dim) 0%, transparent 70%); }
+.card-blue .card-dot.online { background: var(--copper); box-shadow: 0 0 8px var(--copper); }
+.card-blue .card-cta    { color: var(--copper); }
+.card-blue .card-name   { color: var(--copper); }
 
-/* Purple card */
-.card-purple              { border-color: rgba(168,85,247,0.3); }
-.card-purple:hover        { border-color: var(--purple); box-shadow: 0 0 24px var(--purple-glow), 0 8px 32px rgba(0,0,0,0.4); }
-.card-purple .card-glow   { background: radial-gradient(ellipse at top left, var(--purple-dim) 0%, transparent 70%); }
-.card-purple .card-dot.online { background: var(--purple); box-shadow: 0 0 8px var(--purple); }
-.card-purple .card-cta    { color: var(--purple); }
-.card-purple .card-name   { color: var(--purple); }
+/* Purple card — vert jungle */
+.card-purple              { border-color: rgba(74,158,60,0.4); border-top-color: var(--jungle); }
+.card-purple:hover        { border-color: var(--jungle); box-shadow: 0 0 28px var(--jungle-glow), 0 8px 32px rgba(0,0,0,0.5); }
+.card-purple .card-glow   { background: radial-gradient(ellipse at top left, var(--jungle-dim) 0%, transparent 70%); }
+.card-purple .card-dot.online { background: var(--jungle); box-shadow: 0 0 8px var(--jungle); }
+.card-purple .card-cta    { color: var(--jungle); }
+.card-purple .card-name   { color: var(--jungle); }
 
 /* Card internals */
 .card-header {
@@ -286,9 +378,9 @@ a { color: inherit; text-decoration: none; }
 .card-status-label.offline { color: var(--red);    }
 
 .card-name {
-  font-family: 'Syne', sans-serif;
-  font-size: 20px; font-weight: 800;
-  letter-spacing: 0.04em;
+  font-family: 'Cinzel', 'Syne', serif;
+  font-size: 18px; font-weight: 700;
+  letter-spacing: 0.06em;
   margin-bottom: 6px;
 }
 .card-desc {
@@ -297,24 +389,26 @@ a { color: inherit; text-decoration: none; }
   flex: 1;
 }
 
-/* Metrics row */
+/* Metrics row — style jauges steampunk */
 .card-metrics {
   display: flex; gap: 0;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid var(--border-bright);
+  border-radius: 3px;
   overflow: hidden;
   margin-bottom: 16px;
+  background: var(--bg-base);
 }
 .metric {
   flex: 1;
   display: flex; flex-direction: column; align-items: center;
   padding: 10px 8px;
   border-right: 1px solid var(--border);
+  background-image: linear-gradient(180deg, rgba(200,146,42,0.03) 0%, transparent 100%);
 }
 .metric:last-child { border-right: none; }
 .metric-val {
   font-size: 16px; font-weight: 700;
-  color: var(--text-primary);
+  color: var(--brass-light);
   letter-spacing: 0.02em;
 }
 .metric-val.red    { color: var(--red);   }
@@ -334,7 +428,7 @@ a { color: inherit; text-decoration: none; }
   padding: 3px 8px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 2px;
   font-size: 9px; color: var(--text-muted);
   letter-spacing: 0.06em;
 }
@@ -368,18 +462,22 @@ a { color: inherit; text-decoration: none; }
   .panel-integrations { grid-column: span 1; }
 }
 
+/* Panel — style bois tropical avec bord laiton */
 .hub-panel {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-top: 2px solid var(--border-bright);
+  border-radius: 4px;
   padding: 16px;
+  box-shadow: inset 0 0 40px rgba(0,0,0,0.2);
 }
 
 .panel-title {
   font-size: 9px; font-weight: 700;
-  letter-spacing: 0.15em;
-  color: var(--text-muted);
+  letter-spacing: 0.2em;
+  color: var(--brass);
   margin-bottom: 14px;
+  text-shadow: 0 0 6px var(--gold-glow);
 }
 
 /* Market panel */
@@ -389,7 +487,7 @@ a { color: inherit; text-decoration: none; }
   margin-bottom: 4px;
 }
 .market-name  { font-size: 11px; color: var(--text-secondary); }
-.market-price { font-size: 18px; font-weight: 700; color: var(--text-primary); }
+.market-price { font-size: 18px; font-weight: 700; color: var(--brass-light); }
 .market-price.up   { color: var(--green); }
 .market-price.down { color: var(--red);   }
 .vix-price { font-size: 16px; }
@@ -398,24 +496,26 @@ a { color: inherit; text-decoration: none; }
 .market-change.down { color: var(--red);   }
 .market-hl { font-size: 10px; color: var(--text-muted); }
 .market-divider {
-  height: 1px; background: var(--border);
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border-bright), transparent);
   margin: 12px 0;
 }
 .session-badge-home {
   display: inline-block;
   padding: 4px 12px;
-  border-radius: 20px;
+  border-radius: 2px;
   font-size: 11px; font-weight: 700;
   letter-spacing: 0.08em;
   background: var(--bg-elevated);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-bright);
   color: var(--text-secondary);
   margin-bottom: 8px;
+  clip-path: polygon(4px 0%, 100% 0%, calc(100% - 4px) 100%, 0% 100%);
 }
-.session-badge-home.open  { background: rgba(0,230,118,0.15); border-color: var(--green);  color: var(--green);  }
-.session-badge-home.pre   { background: rgba(59,130,246,0.15); border-color: var(--blue);   color: var(--blue);   }
-.session-badge-home.post  { background: rgba(255,140,0,0.15);  border-color: var(--orange); color: var(--orange); }
-.session-badge-home.closed{ background: rgba(61,80,102,0.2);   border-color: var(--border); color: var(--text-muted); }
+.session-badge-home.open  { background: rgba(74,196,114,0.15); border-color: var(--green);  color: var(--green);  }
+.session-badge-home.pre   { background: rgba(181,109,58,0.15); border-color: var(--copper); color: var(--copper); }
+.session-badge-home.post  { background: rgba(224,128,48,0.15);  border-color: var(--orange); color: var(--orange); }
+.session-badge-home.closed{ background: rgba(42,48,22,0.4);    border-color: var(--border); color: var(--text-muted); }
 .session-clock-home {
   display: flex; flex-direction: column; gap: 4px;
   font-size: 11px; color: var(--text-secondary);
@@ -431,7 +531,7 @@ a { color: inherit; text-decoration: none; }
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  border-radius: 6px;
+  border-radius: 3px;
   background: var(--bg-elevated);
   border-left: 3px solid transparent;
   transition: background 0.15s;
@@ -439,7 +539,7 @@ a { color: inherit; text-decoration: none; }
 .home-event-item:hover { background: var(--bg-hover); }
 .home-event-item.high   { border-left-color: var(--red);    }
 .home-event-item.medium { border-left-color: var(--orange); }
-.home-event-item.low    { border-left-color: #c8a000;       }
+.home-event-item.low    { border-left-color: #7a6020;       }
 
 .hev-time { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
 .hev-cur  { font-size: 11px; color: var(--accent-cyan); font-weight: 700; }
@@ -452,8 +552,9 @@ a { color: inherit; text-decoration: none; }
   display: flex; align-items: center; gap: 10px;
   padding: 8px 10px;
   background: var(--bg-elevated);
-  border-radius: 6px;
+  border-radius: 3px;
   border: 1px solid var(--border);
+  border-left: 2px solid var(--border-bright);
 }
 .integ-icon { font-size: 14px; flex-shrink: 0; }
 .integ-name { font-size: 11px; color: var(--text-secondary); flex: 1; }
@@ -472,17 +573,18 @@ a { color: inherit; text-decoration: none; }
 .qlink {
   padding: 6px 12px;
   background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  border: 1px solid var(--border-bright);
+  border-radius: 3px;
   font-size: 10px; color: var(--text-secondary);
   letter-spacing: 0.06em;
   transition: border-color 0.2s, color 0.2s, background 0.2s;
   white-space: nowrap;
+  clip-path: polygon(3px 0%, 100% 0%, calc(100% - 3px) 100%, 0% 100%);
 }
 .qlink:hover {
-  border-color: var(--accent-cyan);
-  color: var(--accent-cyan);
-  background: var(--accent-glow);
+  border-color: var(--brass);
+  color: var(--brass-light);
+  background: var(--gold-dim);
 }
 
 /* ─── FOOTER ──────────────────────────────────────────────────────────────── */
@@ -491,8 +593,11 @@ a { color: inherit; text-decoration: none; }
   display: flex; align-items: center; justify-content: center;
   gap: 12px;
   padding: 14px 24px;
-  border-top: 1px solid var(--border);
+  border-top: 2px solid var(--border);
+  border-top-color: transparent;
+  background: linear-gradient(90deg, transparent, var(--border-bright), transparent) top / 100% 1px no-repeat,
+              linear-gradient(90deg, transparent, var(--border), transparent) top / 100% 2px no-repeat;
   font-size: 10px; color: var(--text-muted);
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
 }
-.footer-sep { color: var(--border-bright); }
+.footer-sep { color: var(--brass); opacity: 0.5; }
