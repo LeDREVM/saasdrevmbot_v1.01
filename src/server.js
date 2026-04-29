@@ -7,6 +7,7 @@ const cron    = require('node-cron');
 
 const { scrapeForexFactory }  = require('./scrapers/forexfactory');
 const { scrapeInvesting }     = require('./scrapers/investing');
+const { scrapeAlphaVantage }  = require('./scrapers/alphavantage');
 const { sendEvent, sendDailySummary } = require('./utils/discord');
 const {
   isEventSent, markEventSent,
@@ -40,6 +41,9 @@ const REMINDER_MINUTES = parseInt(process.env.REMINDER_MINUTES ?? '15', 10);
 const TIMEZONE         = process.env.TIMEZONE                 ?? 'Europe/Paris';
 const ENABLE_FF        = process.env.ENABLE_FOREXFACTORY      !== 'false';
 const ENABLE_INV       = process.env.ENABLE_INVESTING         !== 'false';
+const ENABLE_AV        = process.env.ENABLE_ALPHAVANTAGE      === 'true';
+const AV_API_KEY       = process.env.ALPHA_VANTAGE_API_KEY    ?? '';
+const AV_HORIZON       = process.env.ALPHA_VANTAGE_HORIZON    ?? '3month';
 const ENABLE_SAAS      = process.env.ENABLE_SAAS_API          !== 'false';
 const ENABLE_NEXTCLOUD = process.env.ENABLE_NEXTCLOUD         !== 'false';
 
@@ -257,10 +261,11 @@ async function fetchEvents() {
   }
 
   // Fallback : scrapers directs
-  console.log('[Bot] Source: scrapers directs (FF + Investing)');
+  console.log('[Bot] Source: scrapers directs (FF + Investing + AV)');
   const scrapers = [];
   if (ENABLE_FF)  scrapers.push(scrapeForexFactory());
   if (ENABLE_INV) scrapers.push(scrapeInvesting());
+  if (ENABLE_AV)  scrapers.push(scrapeAlphaVantage(AV_API_KEY, AV_HORIZON));
 
   const results = await Promise.allSettled(scrapers);
   let allEvents = [];

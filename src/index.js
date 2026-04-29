@@ -3,7 +3,9 @@ const cron = require('node-cron');
 
 const { scrapeForexFactory } = require('./scrapers/forexfactory');
 const { scrapeInvesting } = require('./scrapers/investing');
+const { scrapeAlphaVantage } = require('./scrapers/alphavantage');
 const { sendEvent, sendDailySummary } = require('./utils/discord');
+const { logEvent } = require('./services/correlationEngine');
 const {
   isEventSent,
   markEventSent,
@@ -40,6 +42,9 @@ const TIMEZONE = process.env.TIMEZONE ?? 'Europe/Paris';
 
 const ENABLE_FF = process.env.ENABLE_FOREXFACTORY !== 'false';
 const ENABLE_INV = process.env.ENABLE_INVESTING !== 'false';
+const ENABLE_AV  = process.env.ENABLE_ALPHAVANTAGE === 'true';
+const AV_API_KEY = process.env.ALPHA_VANTAGE_API_KEY ?? '';
+const AV_HORIZON = process.env.ALPHA_VANTAGE_HORIZON ?? '3month';
 
 // ─── Validation de la config ──────────────────────────────────────────────────
 
@@ -60,7 +65,7 @@ function validateConfig() {
   );
   console.log(`   Intervalle: ${CHECK_INTERVAL} minutes`);
   console.log(`   Rappel avant: ${REMINDER_MINUTES > 0 ? `${REMINDER_MINUTES}min` : 'Désactivé'}`);
-  console.log(`   Sources: ${[ENABLE_FF && 'ForexFactory', ENABLE_INV && 'Investing'].filter(Boolean).join(', ')}`);
+  console.log(`   Sources: ${[ENABLE_FF && 'ForexFactory', ENABLE_INV && 'Investing', ENABLE_AV && 'AlphaVantage'].filter(Boolean).join(', ')}`);
 }
 
 // ─── Filtrage des événements ──────────────────────────────────────────────────
@@ -95,8 +100,9 @@ async function scrapeAndNotify() {
   try {
     // Scraper les sources activées en parallèle
     const scrapers = [];
-    if (ENABLE_FF) scrapers.push(scrapeForexFactory());
+    if (ENABLE_FF)  scrapers.push(scrapeForexFactory());
     if (ENABLE_INV) scrapers.push(scrapeInvesting());
+    if (ENABLE_AV)  scrapers.push(scrapeAlphaVantage(AV_API_KEY, AV_HORIZON));
 
     const results = await Promise.allSettled(scrapers);
 
@@ -121,8 +127,9 @@ async function scrapeAndNotify() {
       const eventTime = parseForexFactoryTime(event.time, event.date);
       const enrichedEvent = { ...event, _parsedTime: eventTime, _addedAt: Date.now() };
 
-      // Mettre à jour le store
+      // Mettre à jour le store + persister pour la corrélation historique
       const hadResult = upsertEvent(enrichedEvent);
+      logEvent(enrichedEvent);
 
       // 1. Envoyer le rappel (si activé et dans la fenêtre)
       if (
@@ -169,8 +176,9 @@ async function sendMorningBriefing() {
   console.log('[Bot] Envoi du briefing matinal...');
   try {
     const scrapers = [];
-    if (ENABLE_FF) scrapers.push(scrapeForexFactory());
+    if (ENABLE_FF)  scrapers.push(scrapeForexFactory());
     if (ENABLE_INV) scrapers.push(scrapeInvesting());
+    if (ENABLE_AV)  scrapers.push(scrapeAlphaVantage(AV_API_KEY, AV_HORIZON));
 
     const results = await Promise.allSettled(scrapers);
     let allEvents = [];
