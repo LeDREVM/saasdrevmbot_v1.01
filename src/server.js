@@ -47,6 +47,12 @@ const AV_HORIZON       = process.env.ALPHA_VANTAGE_HORIZON    ?? '3month';
 const ENABLE_SAAS      = process.env.ENABLE_SAAS_API          !== 'false';
 const ENABLE_NEXTCLOUD = process.env.ENABLE_NEXTCLOUD         !== 'false';
 
+// Pré-chauffe et scans resserrés autour des ouvertures Londres + New York
+const ENABLE_SESSION_BOOST  = process.env.ENABLE_SESSION_BOOST !== 'false';
+const SESSION_SCAN_INTERVAL = parseInt(process.env.SESSION_SCAN_INTERVAL ?? '2', 10);
+const TZ_LONDON             = 'Europe/London';
+const TZ_NEWYORK            = 'America/New_York';
+
 // ─── Express + Socket.io ──────────────────────────────────────────────────────
 
 const app    = express();
@@ -241,6 +247,11 @@ function filterForNotify(events) {
   return events.filter(e => e.impactLevel >= MIN_IMPACT);
 }
 
+// Filtre complet (devise + impact) — utilisé par le briefing matinal
+function filterEvents(events) {
+  return filterForNotify(filterByCurrency(events));
+}
+
 // ─── Source de données : saasDrevmbot OU scrapers directs ─────────────────────
 
 async function fetchEvents() {
@@ -386,6 +397,19 @@ async function sendMorningBriefing() {
   }
 }
 
+// ─── Pré-chauffe avant ouverture de session ───────────────────────────────────
+
+// Réveille le cache marché + déclenche un scan juste avant l'ouverture, pour
+// que le dashboard soit déjà à jour quand la session démarre.
+async function sessionWarmup(label) {
+  console.log(`[Session] Pré-chauffe ${label}...`);
+  try {
+    const market = await marketData.getUS30();
+    io.emit('market_update', market);
+  } catch {}
+  await scrapeAndNotify();
+}
+
 // ─── Démarrage ────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -421,6 +445,23 @@ async function main() {
 
   // Scan périodique
   cron.schedule(`*/${CHECK_INTERVAL} * * * *`, scrapeAndNotify);
+
+  // ── Sessions Londres + New York ─────────────────────────────────────────────
+  // Pré-chauffe 15 min avant chaque ouverture, puis scans resserrés pendant les
+  // premières heures (les plus volatiles). Les gardes isRunning + déduplication
+  // empêchent tout doublon avec le scan périodique.
+  if (ENABLE_SESSION_BOOST) {
+    // Londres : ouverture 08:00 → pré-chauffe 07:45, scans actifs 08:00–09:59
+    cron.schedule('45 7 * * 1-5', () => sessionWarmup('Londres'), { timezone: TZ_LONDON });
+    cron.schedule(`*/${SESSION_SCAN_INTERVAL} 8-9 * * 1-5`, scrapeAndNotify, { timezone: TZ_LONDON });
+
+    // New York : ouverture 09:30 → pré-chauffe 09:15, scans actifs 09:30–11:59
+    cron.schedule('15 9 * * 1-5', () => sessionWarmup('New York'), { timezone: TZ_NEWYORK });
+    cron.schedule('30-59/' + SESSION_SCAN_INTERVAL + ' 9 * * 1-5', scrapeAndNotify, { timezone: TZ_NEWYORK });
+    cron.schedule(`*/${SESSION_SCAN_INTERVAL} 10-11 * * 1-5`, scrapeAndNotify, { timezone: TZ_NEWYORK });
+
+    console.log(`[Session] Boost activé — Londres (07:45/08h) + New York (09:15/09:30), scan ${SESSION_SCAN_INTERVAL}min`);
+  }
 
   // Mise à jour marché US30 toutes les 30s (broadcast WebSocket)
   setInterval(async () => {
