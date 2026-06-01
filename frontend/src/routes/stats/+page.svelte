@@ -12,8 +12,10 @@
   // ── State ────────────────────────────────────────────────────────────────────
   let selectedSymbol = 'DJI';
   let daysBack       = 30;
+  /** @type {any} */
   let stats          = null;
   let loading        = true;
+  /** @type {any} */
   let error          = null;
 
   // ── Symboles disponibles (GoldyXbOT Express → yahoo-finance2) ────────────────
@@ -44,8 +46,8 @@
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       stats = await res.json();
     } catch (err) {
-      console.error('[Stats] Erreur fetch:', err.message);
-      error = err.message;
+      console.error('[Stats] Erreur fetch:', err instanceof Error ? err.message : String(err));
+      error = err instanceof Error ? err.message : String(err);
       stats = null;
     } finally {
       loading = false;
@@ -70,7 +72,7 @@
   <title>Corrélations — GoldyXbOT</title>
 </svelte:head>
 
-<QuickNav currentPath={currentPath} />
+<QuickNav currentPage={currentPath} />
 
 <div class="dashboard-container">
 

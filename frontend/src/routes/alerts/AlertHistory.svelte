@@ -1,11 +1,15 @@
 <script>
+  /** @type {any[]} */
   export let history = [];
+  /** @type {any} */
   export let stats = null;
-  
+
+  /** @param {any} dateString */
   function formatDate(dateString) {
     return new Date(dateString).toLocaleString('fr-FR');
   }
-  
+
+  /** @param {any} risk */
   function getRiskColor(risk) {
     switch(risk) {
       case 'extreme': return '#ef4444';

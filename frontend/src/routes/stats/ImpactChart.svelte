@@ -2,9 +2,12 @@
     import { onMount } from 'svelte';
     import Chart from 'chart.js/auto';
     
+    /** @type {any[]} */
     export let events;
-    
+
+    /** @type {any} */
     let chartCanvas;
+    /** @type {any} */
     let chartInstance;
     
     onMount(() => {
@@ -22,9 +25,9 @@
         chartInstance.destroy();
       }
       
-      const labels = events.map(e => e.event.event_name.substring(0, 20) + '...');
-      const data = events.map(e => e.impact.movement_pips);
-      const colors = events.map(e => {
+      const labels = events.map((/** @type {any} */ e) => e.event.event_name.substring(0, 20) + '...');
+      const data = events.map((/** @type {any} */ e) => e.impact.movement_pips);
+      const colors = events.map((/** @type {any} */ e) => {
         if (e.impact.movement_pips > 30) return '#ef4444';
         if (e.impact.movement_pips > 15) return '#f59e0b';
         return '#10b981';

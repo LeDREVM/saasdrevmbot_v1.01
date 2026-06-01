@@ -8,6 +8,7 @@
 		{ path: '/stats', icon: '📊', label: 'Stats', color: '#43e97b' }
 	];
 	
+	/** @param {string} path */
 	function isActive(path) {
 		if (path === '/') {
 			return currentPage === '/';

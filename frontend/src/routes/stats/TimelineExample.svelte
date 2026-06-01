@@ -2,6 +2,7 @@
   import Timeline from './Timeline.svelte';
   import { onMount } from 'svelte';
   
+  /** @type {any[]} */
   let events = [];
   let loading = true;
   

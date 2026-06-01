@@ -1,6 +1,8 @@
 <script>
+    /** @type {any} */
     export let alert;
-    
+
+    /** @type {Record<string, { bg: string; border: string; text: string }>} */
     const riskColors = {
       'extreme': { bg: '#fee2e2', border: '#ef4444', text: '#991b1b' },
       'high': { bg: '#fed7aa', border: '#f59e0b', text: '#92400e' },
@@ -8,6 +10,7 @@
       'low': { bg: '#d1fae5', border: '#10b981', text: '#065f46' }
     };
     
+    /** @type {Record<string, string>} */
     const riskEmojis = {
       'extreme': '🔴🔴🔴',
       'high': '🟠🟠',

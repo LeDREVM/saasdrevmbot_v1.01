@@ -5,17 +5,19 @@
    * @prop {string} title - Titre de la timeline (optionnel)
    * @prop {number} maxItems - Nombre maximum d'items à afficher (défaut: 20)
    */
+  /** @type {any[]} */
   export let events = [];
   export let title = '';
   export let maxItems = 20;
-  
+
   // Trier et limiter les événements
   $: displayEvents = (events || [])
-    .sort((a, b) => new Date(b.timestamp || b.date) - new Date(a.timestamp || a.date))
+    .sort((/** @type {any} */ a, /** @type {any} */ b) => new Date(b.timestamp || b.date).getTime() - new Date(a.timestamp || a.date).getTime())
     .slice(0, maxItems);
-  
+
   /**
    * Formate une date/timestamp
+   * @param {any} dateStr
    */
   function formatDate(dateStr) {
     if (!dateStr) return 'N/A';
@@ -30,6 +32,7 @@
   
   /**
    * Formate une date courte (juste jour et mois)
+   * @param {any} dateStr
    */
   function formatShortDate(dateStr) {
     if (!dateStr) return 'N/A';
@@ -42,6 +45,7 @@
   
   /**
    * Obtient la couleur selon le niveau d'impact
+   * @param {any} impact
    */
   function getImpactColor(impact) {
     const impactStr = String(impact).toLowerCase();
@@ -53,6 +57,7 @@
   
   /**
    * Obtient l'icône selon le type d'événement
+   * @param {any} event
    */
   function getEventIcon(event) {
     if (event.type === 'alert') return '🔔';
@@ -66,6 +71,7 @@
   
   /**
    * Vérifie si c'est aujourd'hui
+   * @param {any} dateStr
    */
   function isToday(dateStr) {
     if (!dateStr) return false;

@@ -1,14 +1,18 @@
 <script>
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { API_ENDPOINTS } from '$lib/config';
 
+	/** @type {any[]} */
 	let events = [];
+	/** @type {any} */
 	let stats = null;
 	let loading = true;
+	/** @type {any} */
 	let error = null;
 	let selectedImpact = 'all';
 	let selectedCurrency = 'all';
 	let autoRefresh = true;
+	/** @type {any} */
 	let refreshInterval = null;
 
 	// Filtrer les événements
@@ -42,7 +46,7 @@
 
 		} catch (err) {
 			console.error('Erreur:', err);
-			error = err.message;
+			error = err instanceof Error ? err.message : String(err);
 		} finally {
 			loading = false;
 		}
@@ -61,6 +65,7 @@
 		}
 	}
 
+	/** @param {any} impact */
 	function getImpactColor(impact) {
 		switch(impact) {
 			case 'high': return '#ef4444';
@@ -70,6 +75,7 @@
 		}
 	}
 
+	/** @param {any} impact */
 	function getImpactEmoji(impact) {
 		switch(impact) {
 			case 'high': return '🔴';
@@ -79,6 +85,7 @@
 		}
 	}
 
+	/** @param {any} timeStr */
 	function formatTime(timeStr) {
 		if (!timeStr) return 'N/A';
 		return timeStr;
@@ -100,12 +107,12 @@
 				await fetchStats();
 			}, 5 * 60 * 1000);
 		}
+	});
 
-		return () => {
-			if (refreshInterval) {
-				clearInterval(refreshInterval);
-			}
-		};
+	onDestroy(() => {
+		if (refreshInterval) {
+			clearInterval(refreshInterval);
+		}
 	});
 </script>
 

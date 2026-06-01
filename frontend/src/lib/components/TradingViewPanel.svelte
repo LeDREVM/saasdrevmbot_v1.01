@@ -29,6 +29,7 @@
     `&studies=%5B%5D` +
     `&utm_source=localhost`;
 
+  /** @param {typeof symbols[number]} sym */
   function selectSymbol(sym) {
     loading = true;
     selected = sym;

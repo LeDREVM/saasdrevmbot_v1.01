@@ -1,10 +1,12 @@
 <script>
+  /** @type {Record<string, Record<string, number>>} */
   export let data = {};
-  
+
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
   const hours = [0, 3, 6, 9, 12, 15, 18, 21];
-  
+
   // Fonction pour obtenir la couleur selon la valeur
+  /** @param {any} value */
   function getColor(value) {
     if (value === 0) return '#f1f5f9';
     if (value < 5) return '#dbeafe';
