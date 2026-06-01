@@ -5,4 +5,6 @@ node_modules/
 
 # Corrélation Engine — Cache prix Yahoo Finance (régénéré automatiquement)
 data/price_cache/
+# État de déduplication runtime (régénéré, ne pas versionner)
+data/event_store.json
 # events_log.json est intentionnellement versionné (données historiques précieuses)
