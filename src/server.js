@@ -12,7 +12,7 @@ const { sendEvent, sendDailySummary } = require('./utils/discord');
 const {
   isEventSent, markEventSent,
   isReminderSent, markReminderSent,
-  upsertEvent, getAllEvents, hasNewResult,
+  upsertEvent, getAllEvents, hasNewResult, flushStore,
 } = require('./utils/eventStore');
 const { parseForexFactoryTime, isWithinMinutes } = require('./utils/timeUtils');
 
@@ -20,7 +20,7 @@ const { parseForexFactoryTime, isWithinMinutes } = require('./utils/timeUtils');
 const saasApi        = require('./services/saasApi');
 const { exportDailyCalendar, updateDailyResults, updateIndex, REPORTS_DIR } = require('./services/nextcloudExport');
 const marketData     = require('./services/marketData');
-const { logEvent, buildCorrelationDashboard } = require('./services/correlationEngine');
+const { logEvent, flushEventLog, buildCorrelationDashboard } = require('./services/correlationEngine');
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -363,6 +363,8 @@ async function scrapeAndNotify() {
     console.error('[Bot] Erreur globale:', err.message);
     broadcastScanStatus({ running: false, error: err.message });
   } finally {
+    flushEventLog(); // Écriture disque unique du journal de corrélation (batch du scan)
+    flushStore();    // Persistance de l'état de déduplication
     isRunning = false;
   }
 }
@@ -490,7 +492,7 @@ async function main() {
   }
 }
 
-process.on('SIGINT', () => { console.log('\n[Bot] Arrêt...'); process.exit(0); });
+process.on('SIGINT', () => { console.log('\n[Bot] Arrêt...'); flushEventLog(); flushStore(); process.exit(0); });
 process.on('unhandledRejection', r => console.error('[Bot] Rejet non géré:', r));
 
 main().catch(err => { console.error('[Bot] Erreur fatale:', err); process.exit(1); });
