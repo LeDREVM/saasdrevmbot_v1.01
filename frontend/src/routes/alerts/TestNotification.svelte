@@ -181,13 +181,15 @@
   }
   
   .test-status.success {
-    background: #d1fae5;
-    color: #065f46;
+    background: rgba(52, 211, 153, 0.12);
+    color: var(--success);
+    box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.3);
   }
-  
+
   .test-status.error {
-    background: #fee2e2;
-    color: #991b1b;
+    background: rgba(248, 113, 113, 0.12);
+    color: var(--danger);
+    box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.3);
   }
   
   @keyframes slideIn {
@@ -202,44 +204,45 @@
   }
   
   .test-info {
-    background: #f8fafc;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
     padding: 1.5rem;
     border-radius: 8px;
-    border-left: 4px solid #3b82f6;
+    border-left: 4px solid var(--accent);
   }
-  
+
   .test-info p {
-    color: #475569;
+    color: var(--text-muted);
     margin-bottom: 1rem;
   }
-  
+
   .channel-status {
     display: flex;
     gap: 2rem;
   }
-  
+
   .channel-item {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     font-size: 0.9rem;
-    color: #64748b;
+    color: var(--text-muted);
   }
-  
+
   .status-dot {
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background: #94a3b8;
+    background: var(--text-dim);
   }
-  
+
   .channel-item.enabled {
-    color: #10b981;
+    color: var(--success);
     font-weight: 600;
   }
-  
+
   .channel-item.enabled .status-dot {
-    background: #10b981;
-    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+    background: var(--success);
+    box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.2);
   }
 </style>

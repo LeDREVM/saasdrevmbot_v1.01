@@ -254,21 +254,23 @@
     }
     
     .config-section {
-      background: white;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(12px);
       padding: 2rem;
-      border-radius: 12px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
       margin-bottom: 2rem;
     }
-    
+
     .config-section h3 {
       font-size: 1.3rem;
-      color: #1e293b;
+      color: var(--text);
       margin-bottom: 0.5rem;
     }
-    
+
     .section-desc {
-      color: #64748b;
+      color: var(--text-muted);
       font-size: 0.9rem;
       margin-bottom: 1.5rem;
     }
@@ -285,27 +287,28 @@
       align-items: center;
       gap: 0.75rem;
       padding: 1rem;
-      background: #f8fafc;
-      border: 2px solid #e2e8f0;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
       border-radius: 8px;
       cursor: pointer;
       transition: all 0.2s;
     }
-    
+
     .symbol-checkbox:hover {
-      border-color: #3b82f6;
-      background: #eff6ff;
+      border-color: var(--accent);
+      background: var(--accent-grad-soft);
     }
-    
+
     .symbol-checkbox input[type="checkbox"] {
       width: 20px;
       height: 20px;
       cursor: pointer;
+      accent-color: var(--accent);
     }
-    
+
     .checkbox-label {
       font-weight: 600;
-      color: #1e293b;
+      color: var(--text);
     }
     
     /* Toggle List */
@@ -320,40 +323,43 @@
       justify-content: space-between;
       align-items: center;
       padding: 1.5rem;
-      background: #f8fafc;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
       border-radius: 8px;
       cursor: pointer;
     }
-    
+
     .toggle-info {
       display: flex;
       flex-direction: column;
       gap: 0.25rem;
     }
-    
+
     .toggle-label {
       font-weight: 600;
-      color: #1e293b;
+      color: var(--text);
     }
-    
+
     .toggle-desc {
       font-size: 0.85rem;
-      color: #64748b;
+      color: var(--text-muted);
     }
-    
+
     .toggle {
       width: 50px;
       height: 28px;
       appearance: none;
-      background: #cbd5e1;
+      background: var(--surface-solid-2);
+      border: 1px solid var(--border-strong);
       border-radius: 14px;
       position: relative;
       cursor: pointer;
       transition: background 0.2s;
     }
-    
+
     .toggle:checked {
-      background: #3b82f6;
+      background: var(--accent);
+      border-color: var(--accent);
     }
     
     .toggle::before {
@@ -378,7 +384,8 @@
     .advanced-inputs {
       margin-top: 1rem;
       padding: 1rem;
-      background: #f8fafc;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
       border-radius: 8px;
     }
     
@@ -395,22 +402,25 @@
     .advanced-inputs span {
       font-size: 0.9rem;
       font-weight: 600;
-      color: #475569;
+      color: var(--text-muted);
     }
-    
+
     input[type="text"],
     input[type="number"] {
       padding: 0.75rem;
-      border: 2px solid #e2e8f0;
+      background: var(--surface-solid-2);
+      color: var(--text);
+      border: 1px solid var(--border);
       border-radius: 8px;
       font-size: 1rem;
-      transition: border-color 0.2s;
+      transition: border-color 0.2s, box-shadow 0.2s;
     }
-    
+
     input[type="text"]:focus,
     input[type="number"]:focus {
       outline: none;
-      border-color: #3b82f6;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.15);
     }
     
     .hours-input {
@@ -444,21 +454,22 @@
     }
     
     .save-btn {
-      background: #3b82f6;
-      color: white;
+      background: var(--accent-grad);
+      color: #fff;
     }
-    
+
     .save-btn:hover {
-      background: #2563eb;
       transform: translateY(-1px);
+      box-shadow: var(--shadow-sm);
     }
-    
+
     .cancel-btn {
-      background: #f1f5f9;
-      color: #475569;
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid var(--border-strong);
     }
-    
+
     .cancel-btn:hover {
-      background: #e2e8f0;
+      border-color: var(--accent);
     }
   </style>

@@ -8,12 +8,12 @@
   // Fonction pour obtenir la couleur selon la valeur
   /** @param {any} value */
   function getColor(value) {
-    if (value === 0) return '#f1f5f9';
-    if (value < 5) return '#dbeafe';
-    if (value < 10) return '#93c5fd';
-    if (value < 20) return '#3b82f6';
-    if (value < 30) return '#1d4ed8';
-    return '#1e3a8a';
+    if (value === 0) return 'rgba(255,255,255,0.04)';
+    if (value < 5) return 'rgba(34,211,238,0.18)';
+    if (value < 10) return 'rgba(34,211,238,0.38)';
+    if (value < 20) return 'rgba(34,211,238,0.6)';
+    if (value < 30) return 'rgba(99,102,241,0.75)';
+    return 'rgba(99,102,241,0.95)';
   }
 </script>
 
@@ -44,11 +44,11 @@
   <div class="legend">
     <span class="legend-label">Volatilité (pips):</span>
     <div class="legend-scale">
-      <div class="legend-item" style="background: #f1f5f9">0</div>
-      <div class="legend-item" style="background: #dbeafe">5</div>
-      <div class="legend-item" style="background: #93c5fd">10</div>
-      <div class="legend-item" style="background: #3b82f6">20</div>
-      <div class="legend-item" style="background: #1d4ed8">30+</div>
+      <div class="legend-item" style="background: rgba(255,255,255,0.04)">0</div>
+      <div class="legend-item" style="background: rgba(34,211,238,0.18)">5</div>
+      <div class="legend-item" style="background: rgba(34,211,238,0.38)">10</div>
+      <div class="legend-item" style="background: rgba(34,211,238,0.6)">20</div>
+      <div class="legend-item" style="background: rgba(99,102,241,0.75)">30+</div>
     </div>
   </div>
 </div>
@@ -74,56 +74,60 @@
   
   .cell.header {
     font-weight: 600;
-    color: #64748b;
+    color: var(--text-muted);
     background: transparent;
+    font-family: var(--font-mono);
   }
-  
+
   .cell.day-label {
     font-weight: 600;
-    color: #1e293b;
-    background: #f8fafc;
+    color: var(--text);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
     display: flex;
     align-items: center;
     justify-content: flex-start;
     padding-left: 1rem;
   }
-  
+
   .cell.data-cell {
     cursor: pointer;
     transition: transform 0.2s;
-    color: white;
+    color: var(--text);
     font-weight: 600;
+    font-family: var(--font-mono);
   }
-  
+
   .cell.data-cell:hover {
     transform: scale(1.1);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    box-shadow: var(--shadow-sm);
   }
-  
+
   .legend {
     display: flex;
     align-items: center;
     gap: 1rem;
     padding: 1rem;
-    background: #f8fafc;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
     border-radius: 8px;
   }
-  
+
   .legend-label {
     font-weight: 600;
-    color: #64748b;
+    color: var(--text-muted);
   }
-  
+
   .legend-scale {
     display: flex;
     gap: 0.5rem;
   }
-  
+
   .legend-item {
     padding: 0.5rem 1rem;
     border-radius: 4px;
     font-size: 0.75rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--text);
   }
 </style>

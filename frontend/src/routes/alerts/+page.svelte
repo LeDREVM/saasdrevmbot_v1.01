@@ -310,73 +310,78 @@
     max-width: 1400px;
     margin: 0 auto;
     padding: 2rem;
-    background: #f8fafc;
     min-height: 100vh;
   }
-  
+
   .dashboard-header {
-    background: white;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(12px);
     padding: 2rem;
-    border-radius: 16px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
     margin-bottom: 2rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
   }
-  
+
   h1 {
     font-size: 2rem;
-    color: #1e293b;
+    color: var(--text);
     margin-bottom: 0.5rem;
   }
-  
+
   .subtitle {
-    color: #64748b;
+    color: var(--text-muted);
     font-size: 1rem;
   }
-  
+
   .header-actions {
     display: flex;
     gap: 1rem;
     align-items: center;
   }
-  
+
   .refresh-btn {
     padding: 0.75rem 1.5rem;
-    background: #3b82f6;
-    color: white;
+    background: var(--accent-grad);
+    color: #fff;
     border: none;
     border-radius: 8px;
     font-size: 1rem;
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: all 0.2s;
   }
-  
+
   .refresh-btn:hover {
-    background: #2563eb;
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
   }
-  
+
   .user-badge {
     padding: 0.5rem 1rem;
-    background: #f1f5f9;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
     border-radius: 8px;
     font-size: 0.9rem;
-    color: #475569;
+    color: var(--text-muted);
   }
-  
+
   /* Tabs */
   .tabs {
     display: flex;
     gap: 0.5rem;
     margin-bottom: 2rem;
-    background: white;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(12px);
     padding: 0.5rem;
-    border-radius: 12px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
   }
-  
+
   .tabs button {
     flex: 1;
     padding: 1rem;
@@ -387,17 +392,18 @@
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
-    color: #64748b;
+    color: var(--text-muted);
   }
-  
+
   .tabs button:hover {
-    background: #f1f5f9;
-    color: #1e293b;
+    background: var(--surface-2);
+    color: var(--text);
   }
-  
+
   .tabs button.active {
-    background: #3b82f6;
-    color: white;
+    background: var(--accent-grad-soft);
+    color: var(--accent);
+    box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.3);
   }
   
   /* KPI Grid */
@@ -409,31 +415,36 @@
   }
   
   .kpi-card {
-    background: white;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(12px);
     padding: 1.5rem;
-    border-radius: 12px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
     display: flex;
     align-items: center;
     gap: 1rem;
-    transition: transform 0.2s;
+    transition: transform 0.2s, border-color 0.2s;
+    color: var(--text);
   }
-  
+
   .kpi-card:hover {
     transform: translateY(-2px);
+    border-color: var(--border-strong);
   }
-  
+
   .kpi-card.primary {
-    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-    color: white;
+    background: var(--accent-grad);
+    border: none;
+    color: #fff;
   }
-  
+
   .kpi-card.danger {
-    border-left: 4px solid #ef4444;
+    border-left: 4px solid var(--danger);
   }
-  
+
   .kpi-card.success {
-    border-left: 4px solid #10b981;
+    border-left: 4px solid var(--success);
   }
   
   .kpi-icon {
@@ -449,6 +460,7 @@
     font-size: 2rem;
     font-weight: 700;
     line-height: 1;
+    font-family: var(--font-mono);
   }
   
   .kpi-label {
@@ -459,25 +471,27 @@
   
   /* Sections */
   .section {
-    background: white;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(12px);
     padding: 2rem;
-    border-radius: 12px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
     margin-bottom: 2rem;
   }
-  
+
   .section-header {
     margin-bottom: 1.5rem;
   }
-  
+
   .section-header h2 {
     font-size: 1.5rem;
-    color: #1e293b;
+    color: var(--text);
     margin-bottom: 0.5rem;
   }
-  
+
   .section-desc {
-    color: #64748b;
+    color: var(--text-muted);
     font-size: 0.9rem;
   }
   
@@ -490,58 +504,61 @@
   
   /* Nextcloud Sync Section */
   .sync-section {
-    border-left: 4px solid #0ea5e9;
+    border-left: 4px solid var(--accent);
   }
-  
+
   .sync-actions {
     display: flex;
     gap: 1rem;
     margin-bottom: 1.5rem;
   }
-  
+
   .sync-btn {
     padding: 1rem 2rem;
-    background: #0ea5e9;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.2s;
-  }
-  
-  .sync-btn:hover {
-    background: #0284c7;
-  }
-  
-  .status-btn {
-    padding: 1rem 2rem;
-    background: #f1f5f9;
-    color: #475569;
+    background: var(--accent-grad);
+    color: #fff;
     border: none;
     border-radius: 8px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
   }
-  
-  .status-btn:hover {
-    background: #e2e8f0;
+
+  .sync-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
   }
-  
+
+  .status-btn {
+    padding: 1rem 2rem;
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .status-btn:hover {
+    border-color: var(--accent);
+  }
+
   .sync-status {
     display: flex;
     align-items: flex-start;
     gap: 1rem;
     padding: 1rem;
     border-radius: 8px;
-    background: #fee2e2;
-    color: #991b1b;
+    background: rgba(248, 113, 113, 0.12);
+    color: var(--danger);
+    box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.3);
   }
-  
+
   .sync-status.success {
-    background: #d1fae5;
-    color: #065f46;
+    background: rgba(52, 211, 153, 0.12);
+    color: var(--success);
+    box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.3);
   }
   
   .status-icon {
@@ -582,7 +599,7 @@
   }
   
   .empty-state p {
-    color: #64748b;
+    color: var(--text-muted);
     font-size: 1.1rem;
   }
   
@@ -600,8 +617,8 @@
   .spinner {
     width: 60px;
     height: 60px;
-    border: 5px solid #e5e7eb;
-    border-top-color: #3b82f6;
+    border: 5px solid var(--surface-2);
+    border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 1s linear infinite;
     margin: 0 auto 1rem;
