@@ -1,8 +1,10 @@
 <script>
+  /** @type {any[]} */
   export let data = [];
-  
+
   $: sortedData = (data || []).slice(0, 20); // Limiter à 20 événements
-  
+
+  /** @param {any} timestamp */
   function formatDate(timestamp) {
     const date = new Date(timestamp);
     return date.toLocaleDateString('fr-FR', { 
@@ -13,12 +15,14 @@
     });
   }
   
+  /** @param {any} direction */
   function getDirectionIcon(direction) {
     if (direction === 'up') return '📈';
     if (direction === 'down') return '📉';
     return '↔️';
   }
   
+  /** @param {any} impactLevel */
   function getImpactColor(impactLevel) {
     if (impactLevel === 'High') return '#ef4444';
     if (impactLevel === 'Medium') return '#f59e0b';

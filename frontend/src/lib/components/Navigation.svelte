@@ -20,6 +20,7 @@
 		mobileMenuOpen = false;
 	}
 	
+	/** @param {string} path */
 	function isActive(path) {
 		if (path === '/') {
 			return currentPath === '/';

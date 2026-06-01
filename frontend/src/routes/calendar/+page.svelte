@@ -7,6 +7,7 @@
   
   $: currentPath = $page.url.pathname;
   
+  /** @type {any[]} */
   let events = [];
   let loading = true;
   let selectedCurrencies = ['USD', 'EUR', 'JPY', 'GBP'];

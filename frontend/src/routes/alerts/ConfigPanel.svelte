@@ -1,6 +1,7 @@
 <script>
     import { createEventDispatcher } from 'svelte';
     
+    /** @type {any} */
     export let settings;
     
     const dispatch = createEventDispatcher();
@@ -18,10 +19,11 @@
       { value: 'NDX', label: 'Nasdaq 💻' },
     ];
     
+    /** @param {any} symbol */
     function toggleSymbol(symbol) {
       const index = localSettings.watched_symbols.indexOf(symbol);
       if (index > -1) {
-        localSettings.watched_symbols = localSettings.watched_symbols.filter(s => s !== symbol);
+        localSettings.watched_symbols = localSettings.watched_symbols.filter(/** @param {any} s */ s => s !== symbol);
       } else {
         localSettings.watched_symbols = [...localSettings.watched_symbols, symbol];
       }

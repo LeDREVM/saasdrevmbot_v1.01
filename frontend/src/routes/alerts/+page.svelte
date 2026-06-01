@@ -14,15 +14,15 @@
   const userId = 'negus_dja';
   
   // State
+  /** @type {any} */
   let settings = null;
+  /** @type {any[]} */
   let activeAlerts = [];
-  /** 
-   * history: Array of alert history records.
-   * stats: Object containing statistics data.
-   * syncStatus: Status object or string (type as appropriate).
-   */
+  /** @type {any[]} */
   let history = [];
+  /** @type {any} */
   let stats = null;
+  /** @type {any} */
   let syncStatus = null;
   let loading = true;
   let activeTab = 'overview'; // overview, config, history
@@ -69,6 +69,7 @@
     }
   }
   
+  /** @param {any} newSettings */
   async function updateSettings(newSettings) {
     const response = await fetch(`${API_URL}/alert-config/settings/${userId}`, {
       method: 'PATCH',
@@ -92,7 +93,7 @@
       alert('✅ Synchronisation lancée !');
       await checkSyncStatus();
     } catch (error) {
-      alert('❌ Erreur sync: ' + error.message);
+      alert('❌ Erreur sync: ' + (error instanceof Error ? error.message : String(error)));
     }
   }
   

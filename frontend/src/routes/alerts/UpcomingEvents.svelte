@@ -3,6 +3,7 @@
   
   export let symbols = ['EURUSD'];
   
+  /** @type {any[]} */
   let events = [];
   let loading = true;
   
@@ -26,6 +27,7 @@
     fetchUpcomingEvents();
   });
   
+  /** @param {any} impact */
   function getImpactColor(impact) {
     switch(impact) {
       case 'High': return '#ef4444';

@@ -1,12 +1,15 @@
 <script>
+  /** @type {any} */
   export let event;
-  
+
+  /** @type {Record<string, string>} */
   const impactColors = {
     'High': '#ef4444',
     'Medium': '#f59e0b',
     'Low': '#10b981'
   };
-  
+
+  /** @type {Record<string, string>} */
   const impactEmojis = {
     'High': '🔴',
     'Medium': '🟡',

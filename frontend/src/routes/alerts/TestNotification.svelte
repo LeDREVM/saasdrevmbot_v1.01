@@ -1,5 +1,7 @@
 <script>
+  /** @type {any} */
   export let userId;
+  /** @type {any} */
   export let settings;
   
   let testStatus = '';
@@ -31,13 +33,13 @@
         testStatus = `❌ Erreur: ${data.detail || 'Échec envoi'}`;
       }
     } catch (error) {
-      testStatus = `❌ Erreur: ${error.message}`;
+      testStatus = `❌ Erreur: ${error instanceof Error ? error.message : String(error)}`;
     } finally {
       testing = false;
       setTimeout(() => testStatus = '', 5000);
     }
   }
-  
+
   async function testTelegram() {
     if (!settings?.notifications?.telegram_enabled) {
       testStatus = '❌ Telegram non activé dans la configuration';
@@ -62,7 +64,7 @@
         testStatus = `❌ Erreur: ${data.detail || 'Échec envoi'}`;
       }
     } catch (error) {
-      testStatus = `❌ Erreur: ${error.message}`;
+      testStatus = `❌ Erreur: ${error instanceof Error ? error.message : String(error)}`;
     } finally {
       testing = false;
       setTimeout(() => testStatus = '', 5000);
