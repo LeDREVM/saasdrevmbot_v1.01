@@ -1,4 +1,17 @@
-const puppeteer = require('puppeteer');
+/**
+ * Scraper ForexFactory — flux JSON officiel (faireconomy)
+ *
+ * Remplace l'ancien scraping Puppeteer (Chromium headless relancé à chaque scan,
+ * ~300-500 Mo de RAM) par une simple requête HTTP sur le flux JSON public de la
+ * semaine. Plus rapide, sans navigateur, et insensible aux changements de CSS.
+ *
+ * Flux : https://nfs.faireconomy.media/ff_calendar_thisweek.json
+ * Format d'un item : { title, country, date (ISO+offset), impact, forecast, previous }
+ * Remarque : ce flux ne fournit PAS le résultat "actual" en direct. Les résultats
+ * temps réel proviennent d'Investing.com et/ou de l'API saasDrevmbot.
+ */
+
+const axios = require('axios');
 
 const IMPACT_MAP = {
   'High': 3,
@@ -15,126 +28,75 @@ const IMPACT_EMOJI = {
   0: '⚪',
 };
 
+const FF_FEED_URL = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
+
+// Formate une Date en heure ForexFactory ("8:30am", "10:00pm") en heure locale
+// du serveur, pour rester compatible avec parseForexFactoryTime().
+function formatTime(date) {
+  let hours = date.getHours();
+  const minutes = date.getMinutes();
+  const period = hours >= 12 ? 'pm' : 'am';
+  hours = hours % 12;
+  if (hours === 0) hours = 12;
+  return `${hours}:${String(minutes).padStart(2, '0')}${period}`;
+}
+
+// Formate une Date en "Mon Mar 10" (sans année) pour parseDateString().
+function formatDate(date) {
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 /**
- * Scrape le calendrier économique ForexFactory
- * @returns {Promise<Array>} Liste d'événements
+ * Récupère le calendrier économique ForexFactory de la semaine.
+ * @returns {Promise<Array>} Liste d'événements normalisés
  */
 async function scrapeForexFactory() {
-  let browser;
   try {
-    browser = await puppeteer.launch({
-      headless: 'new',
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-      ],
+    const { data } = await axios.get(FF_FEED_URL, {
+      timeout: 15000,
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+      },
     });
 
-    const page = await browser.newPage();
+    if (!Array.isArray(data)) {
+      console.warn('[ForexFactory] Réponse inattendue (pas un tableau)');
+      return [];
+    }
 
-    await page.setUserAgent(
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    );
+    return data
+      .filter((item) => item && item.title && item.country)
+      .map((item) => {
+        const dt = item.date ? new Date(item.date) : null;
+        const valid = dt && !isNaN(dt.getTime());
 
-    await page.setExtraHTTPHeaders({
-      'Accept-Language': 'en-US,en;q=0.9',
-    });
+        const impact = item.impact || 'Low';
+        const impactLevel = IMPACT_MAP[impact] ?? 1;
 
-    // Charger la page du calendrier du jour
-    await page.goto('https://www.forexfactory.com/calendar', {
-      waitUntil: 'networkidle2',
-      timeout: 30000,
-    });
+        // Les jours fériés / événements « All Day » n'ont pas d'heure précise
+        const isAllDay = impact === 'Holiday' || !valid;
+        const time = isAllDay ? 'All Day' : formatTime(dt);
+        const date = valid ? formatDate(dt) : '';
 
-    // Attendre le tableau du calendrier
-    await page.waitForSelector('.calendar__table', { timeout: 15000 }).catch(() => {
-      console.warn('[ForexFactory] Tableau non trouvé, tentative de scraping quand même...');
-    });
-
-    const events = await page.evaluate(() => {
-      const rows = document.querySelectorAll('.calendar__row');
-      const results = [];
-      let currentDate = '';
-      let currentTime = '';
-
-      rows.forEach((row) => {
-        // Détecter les lignes de date
-        const dateCell = row.querySelector('.calendar__cell.calendar__date span');
-        if (dateCell && dateCell.textContent.trim()) {
-          currentDate = dateCell.textContent.trim();
-        }
-
-        // Détecter les lignes d'heure
-        const timeCell = row.querySelector('.calendar__cell.calendar__time');
-        if (timeCell && timeCell.textContent.trim()) {
-          const timeText = timeCell.textContent.trim();
-          if (timeText && timeText !== 'All Day') {
-            currentTime = timeText;
-          }
-        }
-
-        // Extraire les données de l'événement
-        const currencyCell = row.querySelector('.calendar__cell.calendar__currency');
-        const impactCell = row.querySelector('.calendar__cell.calendar__impact span');
-        const eventCell = row.querySelector('.calendar__cell.calendar__event span');
-        const actualCell = row.querySelector('.calendar__cell.calendar__actual');
-        const forecastCell = row.querySelector('.calendar__cell.calendar__forecast');
-        const previousCell = row.querySelector('.calendar__cell.calendar__previous');
-
-        if (!currencyCell || !eventCell) return;
-
-        const currency = currencyCell.textContent.trim();
-        const eventName = eventCell.textContent.trim();
-
-        if (!currency || !eventName) return;
-
-        // Déterminer l'impact
-        let impact = 'Low';
-        if (impactCell) {
-          const impactClass = impactCell.className;
-          if (impactClass.includes('high')) impact = 'High';
-          else if (impactClass.includes('medium')) impact = 'Medium';
-          else if (impactClass.includes('low')) impact = 'Low';
-          else if (impactClass.includes('holiday')) impact = 'Holiday';
-          else if (impactClass.includes('nonecon')) impact = 'Non-Economic';
-        }
-
-        const actual = actualCell ? actualCell.textContent.trim() : '';
-        const forecast = forecastCell ? forecastCell.textContent.trim() : '';
-        const previous = previousCell ? previousCell.textContent.trim() : '';
-
-        results.push({
+        return {
           source: 'ForexFactory',
-          date: currentDate,
-          time: currentTime,
-          currency,
+          date,
+          time,
+          currency: item.country,
           impact,
-          event: eventName,
-          actual: actual || null,
-          forecast: forecast || null,
-          previous: previous || null,
-        });
+          event: item.title,
+          actual: item.actual || null,
+          forecast: item.forecast || null,
+          previous: item.previous || null,
+          impactLevel,
+          impactEmoji: IMPACT_EMOJI[impactLevel],
+          id: `FF_${date}_${time}_${item.country}_${item.title}`.replace(/\s+/g, '_'),
+        };
       });
-
-      return results;
-    });
-
-    await browser.close();
-
-    // Post-traitement: normaliser les données
-    return events
-      .filter((e) => e.event && e.currency)
-      .map((e) => ({
-        ...e,
-        impactLevel: IMPACT_MAP[e.impact] ?? 1,
-        impactEmoji: IMPACT_EMOJI[IMPACT_MAP[e.impact] ?? 1],
-        id: `FF_${e.date}_${e.time}_${e.currency}_${e.event}`.replace(/\s+/g, '_'),
-      }));
   } catch (error) {
-    console.error('[ForexFactory] Erreur de scraping:', error.message);
-    if (browser) await browser.close().catch(() => {});
+    console.error('[ForexFactory] Erreur de récupération:', error.message);
     return [];
   }
 }

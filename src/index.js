@@ -5,7 +5,7 @@ const { scrapeForexFactory } = require('./scrapers/forexfactory');
 const { scrapeInvesting } = require('./scrapers/investing');
 const { scrapeAlphaVantage } = require('./scrapers/alphavantage');
 const { sendEvent, sendDailySummary } = require('./utils/discord');
-const { logEvent } = require('./services/correlationEngine');
+const { logEvent, flushEventLog } = require('./services/correlationEngine');
 const {
   isEventSent,
   markEventSent,
@@ -13,6 +13,7 @@ const {
   markReminderSent,
   upsertEvent,
   hasNewResult,
+  flushStore,
 } = require('./utils/eventStore');
 const { parseForexFactoryTime, isWithinMinutes } = require('./utils/timeUtils');
 
@@ -166,6 +167,8 @@ async function scrapeAndNotify() {
   } catch (error) {
     console.error('[Bot] Erreur globale:', error.message);
   } finally {
+    flushEventLog(); // Écriture disque unique du journal de corrélation (batch du scan)
+    flushStore();    // Persistance de l'état de déduplication
     isRunning = false;
   }
 }
@@ -224,6 +227,8 @@ async function main() {
 // Gestion propre de l'arrêt
 process.on('SIGINT', () => {
   console.log('\n[Bot] Arrêt propre...');
+  flushEventLog();
+  flushStore();
   process.exit(0);
 });
 

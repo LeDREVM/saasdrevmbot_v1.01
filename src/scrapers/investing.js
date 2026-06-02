@@ -1,12 +1,17 @@
-const puppeteer = require('puppeteer');
+/**
+ * Scraper Investing.com — endpoint AJAX + cheerio
+ *
+ * Remplace l'ancien scraping Puppeteer par une requête HTTP directe sur
+ * l'endpoint interne `getCalendarFilteredData`, qui renvoie les lignes du
+ * tableau en HTML. On les parse ensuite avec cheerio (sans navigateur).
+ *
+ * ⚠️ Investing.com est protégé (Cloudflare) : si la requête est bloquée, le
+ * scraper renvoie [] proprement et le système bascule sur ForexFactory / l'API
+ * saasDrevmbot (sources primaires). C'est un complément, pas une dépendance dure.
+ */
 
-const IMPACT_MAP = {
-  5: 3, // Volatilité très haute -> impact 3
-  4: 3, // Volatilité haute -> impact 3
-  3: 2, // Volatilité moyenne -> impact 2
-  2: 1, // Volatilité faible -> impact 1
-  1: 1, // Volatilité très faible -> impact 1
-};
+const axios = require('axios');
+const cheerio = require('cheerio');
 
 const IMPACT_EMOJI = {
   3: '🔴',
@@ -15,122 +20,85 @@ const IMPACT_EMOJI = {
   0: '⚪',
 };
 
+const INVESTING_AJAX_URL =
+  'https://www.investing.com/economic-calendar/Service/getCalendarFilteredData';
+
 /**
- * Scrape le calendrier économique Investing.com
- * @returns {Promise<Array>} Liste d'événements
+ * Scrape le calendrier économique Investing.com (jour courant).
+ * @returns {Promise<Array>} Liste d'événements normalisés
  */
 async function scrapeInvesting() {
-  let browser;
   try {
-    browser = await puppeteer.launch({
-      headless: 'new',
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-      ],
+    // Corps form-urlencoded : calendrier du jour, fuseau GMT, toutes devises.
+    const body = new URLSearchParams({
+      'country[]': '',
+      timeZone: '55', // GMT
+      timeFilter: 'timeRemain',
+      currentTab: 'today',
+      submitFilters: '1',
+      limit_from: '0',
+    }).toString();
+
+    const { data } = await axios.post(INVESTING_AJAX_URL, body, {
+      timeout: 15000,
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html, */*; q=0.01',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Referer': 'https://www.investing.com/economic-calendar/',
+        'Origin': 'https://www.investing.com',
+      },
     });
 
-    const page = await browser.newPage();
+    const html = typeof data === 'string' ? data : data?.data;
+    if (!html) {
+      console.warn('[Investing] Réponse vide ou inattendue');
+      return [];
+    }
 
-    await page.setUserAgent(
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    );
+    const $ = cheerio.load(html);
+    const results = [];
 
-    await page.setExtraHTTPHeaders({
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-    });
+    $('tr.js-event-item').each((_, el) => {
+      const row = $(el);
 
-    // Charger le calendrier économique d'Investing
-    await page.goto('https://www.investing.com/economic-calendar/', {
-      waitUntil: 'networkidle2',
-      timeout: 30000,
-    });
+      const time = row.find('td.first.left.time').text().trim();
+      const currency = row.find('td.left.flagCur').text().trim();
+      const eventName = row.find('td.left.event a').text().trim();
+      if (!eventName) return;
 
-    // Gérer le bandeau de cookies si présent
-    await page.evaluate(() => {
-      const acceptBtn = document.querySelector('#onetrust-accept-btn-handler');
-      if (acceptBtn) acceptBtn.click();
-    }).catch(() => {});
+      // Impact = nombre d'icônes « pleines » (grayFullBullishIcon)
+      const filled = row.find('td.sentiment i.grayFullBullishIcon').length;
+      let impactLevel = 1;
+      if (filled >= 3) impactLevel = 3;
+      else if (filled === 2) impactLevel = 2;
 
-    // Attendre le tableau
-    await page.waitForSelector('#economicCalendarData', { timeout: 15000 }).catch(() => {
-      console.warn('[Investing] Tableau non trouvé, tentative de scraping quand même...');
-    });
+      const actual = row.find('td.bold.act').text().trim();
+      const forecast = row.find('td.fore').text().trim();
+      const previous = row.find('td.prev').text().trim();
 
-    const events = await page.evaluate(() => {
-      const rows = document.querySelectorAll('#economicCalendarData tr.js-event-item');
-      const results = [];
+      const timestamp = row.attr('data-event-datetime') || '';
 
-      rows.forEach((row) => {
-        try {
-          const timeEl = row.querySelector('td.first.left.time');
-          const currencyEl = row.querySelector('td.left.flagCur.noWrap');
-          const impactEl = row.querySelector('td.left.textNum.sentiment');
-          const eventEl = row.querySelector('td.left.event a');
-          const actualEl = row.querySelector('td.bold.act');
-          const forecastEl = row.querySelector('td.fore');
-          const previousEl = row.querySelector('td.prev');
-
-          if (!eventEl) return;
-
-          const time = timeEl ? timeEl.textContent.trim() : '';
-          const currency = currencyEl ? currencyEl.textContent.trim() : '';
-          const eventName = eventEl.textContent.trim();
-
-          // Compter le nombre d'étoiles/icônes pour l'impact
-          let impactLevel = 1;
-          if (impactEl) {
-            const icons = impactEl.querySelectorAll('i');
-            const filled = Array.from(icons).filter(
-              (i) => !i.classList.contains('empty')
-            ).length;
-            if (filled >= 4) impactLevel = 3;
-            else if (filled >= 2) impactLevel = 2;
-            else impactLevel = 1;
-          }
-
-          const actual = actualEl ? actualEl.textContent.trim() : '';
-          const forecast = forecastEl ? forecastEl.textContent.trim() : '';
-          const previous = previousEl ? previousEl.textContent.trim() : '';
-
-          const eventId = row.getAttribute('event_attr_id') || '';
-          const timestamp = row.getAttribute('data-event-datetime') || '';
-
-          results.push({
-            source: 'Investing',
-            time,
-            currency,
-            impactLevel,
-            event: eventName,
-            actual: actual || null,
-            forecast: forecast || null,
-            previous: previous || null,
-            eventId,
-            timestamp,
-          });
-        } catch (e) {
-          // Ignorer les lignes malformées
-        }
+      results.push({
+        source: 'Investing',
+        time,
+        currency,
+        impactLevel,
+        impactEmoji: IMPACT_EMOJI[impactLevel] ?? '🟡',
+        event: eventName,
+        actual: actual || null,
+        forecast: forecast || null,
+        previous: previous || null,
+        id: `INV_${timestamp || time}_${currency}_${eventName}`.replace(/\s+/g, '_'),
       });
-
-      return results;
     });
 
-    await browser.close();
-
-    return events
-      .filter((e) => e.event && e.currency)
-      .map((e) => ({
-        ...e,
-        impactEmoji: IMPACT_EMOJI[e.impactLevel] ?? '🟡',
-        id: `INV_${e.timestamp || e.time}_${e.currency}_${e.event}`.replace(/\s+/g, '_'),
-      }));
+    return results.filter((e) => e.event && e.currency);
   } catch (error) {
-    console.error('[Investing] Erreur de scraping:', error.message);
-    if (browser) await browser.close().catch(() => {});
+    console.error('[Investing] Erreur de récupération:', error.message);
     return [];
   }
 }

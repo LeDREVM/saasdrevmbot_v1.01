@@ -78,52 +78,94 @@ function ensureDirs() {
  * Persiste un événement scraped dans data/events_log.json.
  * Appelé depuis scrapeAndNotify() à chaque upsertEvent().
  * Conserve 90 jours d'historique maximum.
+ *
+ * Performance : le journal est chargé UNE SEULE fois en mémoire, les mises à
+ * jour se font sur la Map, et l'écriture disque est coalescée (debounce) au lieu
+ * de relire/réécrire tout le fichier à chaque événement de chaque scan.
  */
+
+const LOG_RETENTION_MS = 90 * 24 * 60 * 60 * 1000; // 90 jours
+const FLUSH_DEBOUNCE_MS = 5000;
+
+let _logCache   = null;  // Map<id, eventObj>
+let _logDirty   = false;
+let _flushTimer = null;
+
+// Charge le journal en mémoire (une seule fois).
+function loadLog() {
+  if (_logCache) return _logCache;
+  ensureDirs();
+  _logCache = new Map();
+  if (fs.existsSync(LOG_FILE)) {
+    try {
+      const arr = JSON.parse(fs.readFileSync(LOG_FILE, 'utf8'));
+      if (Array.isArray(arr)) {
+        for (const e of arr) if (e && e.id) _logCache.set(e.id, e);
+      }
+    } catch {}
+  }
+  return _logCache;
+}
+
+// Programme une écriture disque différée (coalesce les écritures d'un scan).
+function scheduleFlush() {
+  _logDirty = true;
+  if (_flushTimer) return;
+  _flushTimer = setTimeout(() => { _flushTimer = null; flushEventLog(); }, FLUSH_DEBOUNCE_MS);
+  if (_flushTimer.unref) _flushTimer.unref();
+}
+
+/**
+ * Écrit le journal sur disque s'il a été modifié (purge des entrées > 90 jours).
+ * Appelée automatiquement (debounce) et explicitement en fin de scan / à l'arrêt.
+ */
+function flushEventLog() {
+  if (!_logDirty || !_logCache) return;
+  try {
+    ensureDirs();
+    const cutoff = Date.now() - LOG_RETENTION_MS;
+    const arr = [];
+    for (const e of _logCache.values()) {
+      if (!e._loggedAt || e._loggedAt > cutoff) arr.push(e);
+    }
+    // Reflète la purge dans le cache mémoire.
+    _logCache.clear();
+    for (const e of arr) _logCache.set(e.id, e);
+    fs.writeFileSync(LOG_FILE, JSON.stringify(arr));
+    _logDirty = false;
+  } catch (err) {
+    console.warn('[CorrelEngine] flushEventLog erreur:', err.message);
+  }
+}
+
 function logEvent(event) {
   if (!event?._parsedTime) return; // Ne logguer que les événements avec un timestamp précis
 
-  try {
-    ensureDirs();
+  const log = loadLog();
+  const existing = log.get(event.id);
 
-    let events = [];
-    if (fs.existsSync(LOG_FILE)) {
-      try { events = JSON.parse(fs.readFileSync(LOG_FILE, 'utf8')); }
-      catch {}
+  if (existing) {
+    // Mettre à jour le résultat (actual) si disponible
+    if (event.actual && event.actual !== existing.actual) {
+      existing.actual   = event.actual;
+      existing.previous = event.previous;
+      scheduleFlush();
     }
-
-    const idx = events.findIndex(e => e.id === event.id);
-    if (idx >= 0) {
-      // Mettre à jour le résultat (actual) si disponible
-      if (event.actual && event.actual !== events[idx].actual) {
-        events[idx] = {
-          ...events[idx],
-          actual:   event.actual,
-          previous: event.previous,
-        };
-      }
-    } else {
-      events.push({
-        id:          event.id,
-        event:       event.event,
-        currency:    event.currency,
-        time:        event.time,
-        date:        event.date,
-        impactLevel: event.impactLevel,
-        actual:      event.actual   || null,
-        forecast:    event.forecast || null,
-        previous:    event.previous || null,
-        _parsedTime: event._parsedTime,
-        _loggedAt:   Date.now(),
-      });
-    }
-
-    // Garder 90 jours max
-    const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
-    events = events.filter(e => e._loggedAt > cutoff);
-
-    fs.writeFileSync(LOG_FILE, JSON.stringify(events));
-  } catch (err) {
-    console.warn('[CorrelEngine] logEvent erreur:', err.message);
+  } else {
+    log.set(event.id, {
+      id:          event.id,
+      event:       event.event,
+      currency:    event.currency,
+      time:        event.time,
+      date:        event.date,
+      impactLevel: event.impactLevel,
+      actual:      event.actual   || null,
+      forecast:    event.forecast || null,
+      previous:    event.previous || null,
+      _parsedTime: event._parsedTime,
+      _loggedAt:   Date.now(),
+    });
+    scheduleFlush();
   }
 }
 
@@ -132,14 +174,13 @@ function logEvent(event) {
  * @param {number} daysBack - Fenêtre temporelle en jours
  */
 function getHistoricalEvents(daysBack = 30) {
-  if (!fs.existsSync(LOG_FILE)) return [];
-  try {
-    const events = JSON.parse(fs.readFileSync(LOG_FILE, 'utf8'));
-    const cutoff = Date.now() - daysBack * 24 * 60 * 60 * 1000;
-    return events.filter(e => e._loggedAt > cutoff && e._parsedTime);
-  } catch {
-    return [];
+  const log = loadLog();
+  const cutoff = Date.now() - daysBack * 24 * 60 * 60 * 1000;
+  const out = [];
+  for (const e of log.values()) {
+    if (e._loggedAt > cutoff && e._parsedTime) out.push(e);
   }
+  return out;
 }
 
 // ─── Données prix Yahoo Finance ───────────────────────────────────────────────
@@ -471,4 +512,4 @@ async function buildCorrelationDashboard(symbol = 'DJI', daysBack = 30, force = 
 
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
-module.exports = { logEvent, getHistoricalEvents, buildCorrelationDashboard };
+module.exports = { logEvent, flushEventLog, getHistoricalEvents, buildCorrelationDashboard };
