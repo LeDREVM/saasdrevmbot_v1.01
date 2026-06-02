@@ -1,0 +1,15 @@
+[Unit]
+Description=GoldyXbOT Dashboard (Node.js)
+After=network.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__APP_DIR__
+ExecStart=/usr/bin/node src/server.js
+EnvironmentFile=-__APP_DIR__/.env
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
