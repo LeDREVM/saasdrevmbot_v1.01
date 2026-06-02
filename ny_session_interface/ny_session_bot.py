@@ -258,11 +258,13 @@ def build_context(symbol_cfg: dict):
 class DailyState:
     day: str = ""
     start_equity: float = 0.0
+    start_balance: float = 0.0
     halted: bool = False
     trades: dict = field(default_factory=dict)
 
-    def reset(self, equity: float, day: str):
+    def reset(self, equity: float, day: str, balance: float | None = None):
         self.day, self.start_equity, self.halted = day, equity, False
+        self.start_balance = balance if balance is not None else equity
         self.trades = {s: 0 for s in SYMBOLS}
 
 
@@ -279,6 +281,9 @@ class BotEngine:
 
         self.state = DailyState()
         self.signals: deque = deque(maxlen=100)
+        self.closed_trades: deque = deque(maxlen=200)
+        self.equity_history: deque = deque(maxlen=720)  # ~ courbe d'équité
+        self._last_eq_sample = 0.0
 
         self.running = False
         self.connected = False
@@ -427,6 +432,7 @@ class BotEngine:
                 })
                 if res and res.retcode == mt5.TRADE_RETCODE_DONE:
                     closed += 1
+                    self._record_closed(pos, price, reason)
                     log.info("[%s] Position fermée (%s)", pos.symbol, reason)
         return closed
 
@@ -448,9 +454,26 @@ class BotEngine:
                 })
                 ok = bool(res and res.retcode == mt5.TRADE_RETCODE_DONE)
                 if ok:
+                    self._record_closed(pos, price, "ui")
                     log.info("[%s] Position %s fermée (UI)", pos.symbol, ticket)
                 return ok
         return False
+
+    def _record_closed(self, pos, exit_px: float, reason: str):
+        """Enregistre un trade fermé avec son PnL réalisé (pour les stats)."""
+        try:
+            info = mt5.symbol_info(pos.symbol)
+            diff = (exit_px - pos.price_open) if pos.type == mt5.POSITION_TYPE_BUY else (pos.price_open - exit_px)
+            pnl = diff / info.trade_tick_size * info.trade_tick_value
+            self.closed_trades.appendleft({
+                "ts": datetime.now(ZoneInfo("UTC")).isoformat(timespec="seconds"),
+                "symbol": pos.symbol,
+                "type": "BUY" if pos.type == mt5.POSITION_TYPE_BUY else "SELL",
+                "volume": pos.volume, "entry": round(pos.price_open, info.digits),
+                "exit": round(exit_px, info.digits), "pnl": round(pnl, 2), "reason": reason,
+            })
+        except Exception:  # noqa: BLE001
+            pass
 
     # ── garde-fous ────────────────────────────────────────────────────────
     @staticmethod
@@ -490,9 +513,10 @@ class BotEngine:
             self.running = False
             return
         with self._mt5_lock:
-            eq = mt5.account_info().equity
-        self.state.reset(eq, datetime.now(TZ_NY).strftime("%Y-%m-%d"))
-        log.info("🌅 Session prête | equity départ=%.2f | profil=%s", eq, self.profile_name)
+            acc = mt5.account_info()
+        self.state.reset(acc.equity, datetime.now(TZ_NY).strftime("%Y-%m-%d"), acc.balance)
+        self.sample_equity(force=True)
+        log.info("🌅 Session prête | equity départ=%.2f | profil=%s", acc.equity, self.profile_name)
         session_was_open = False
 
         try:
@@ -504,9 +528,11 @@ class BotEngine:
 
                 if today != self.state.day:
                     with self._mt5_lock:
-                        eq = mt5.account_info().equity
-                    self.state.reset(eq, today)
-                    log.info("🌅 Nouveau jour NY %s | equity départ=%.2f", today, eq)
+                        acc = mt5.account_info()
+                    self.state.reset(acc.equity, today, acc.balance)
+                    log.info("🌅 Nouveau jour NY %s | equity départ=%.2f", today, acc.equity)
+
+                self.sample_equity()
 
                 self.session_open = self._in_ny_session(now_ny)
                 self.kill_switch = self.kill_switch or os.path.exists(KILL_SWITCH_FILE)
@@ -637,6 +663,62 @@ class BotEngine:
                 except OSError:
                     pass
             log.info("✅ Kill switch désactivé.")
+
+    # ── équité & stats ────────────────────────────────────────────────────
+    def sample_equity(self, force: bool = False):
+        """Ajoute un point (equity, balance) à l'historique (throttle 5s)."""
+        if not self.connected:
+            return
+        now = time.time()
+        if not force and now - self._last_eq_sample < 5:
+            return
+        try:
+            with self._mt5_lock:
+                a = mt5.account_info()
+            if a:
+                self.equity_history.append({
+                    "ts": datetime.now(ZoneInfo("UTC")).isoformat(timespec="seconds"),
+                    "equity": round(a.equity, 2), "balance": round(a.balance, 2),
+                })
+                self._last_eq_sample = now
+        except Exception:  # noqa: BLE001
+            pass
+
+    def equity_series(self) -> list[dict]:
+        return list(self.equity_history)
+
+    def stats(self) -> dict:
+        acc = None
+        if self.connected:
+            try:
+                with self._mt5_lock:
+                    acc = mt5.account_info()
+            except Exception:  # noqa: BLE001
+                acc = None
+
+        realized = floating = total = ret_pct = 0.0
+        if acc and self.state.start_equity:
+            realized = acc.balance - self.state.start_balance
+            floating = acc.equity - acc.balance
+            total = acc.equity - self.state.start_equity
+            ret_pct = total / self.state.start_equity * 100
+
+        closed = list(self.closed_trades)
+        wins = [t for t in closed if t["pnl"] > 0]
+        losses = [t for t in closed if t["pnl"] <= 0]
+        winrate = (len(wins) / len(closed) * 100) if closed else 0.0
+        gross = sum(t["pnl"] for t in closed)
+        opened_today = sum(self.state.trades.values()) if self.state.trades else 0
+
+        return {
+            "realized_pnl": round(realized, 2), "floating_pnl": round(floating, 2),
+            "total_pnl": round(total, 2), "return_pct": round(ret_pct, 2),
+            "opened_today": opened_today, "closed_count": len(closed),
+            "wins": len(wins), "losses": len(losses), "winrate": round(winrate, 1),
+            "gross_closed_pnl": round(gross, 2),
+            "currency": acc.currency if acc else "",
+            "recent_closed": closed[:20],
+        }
 
     # ── lecture d'état (API) ──────────────────────────────────────────────
     def snapshot(self) -> dict:

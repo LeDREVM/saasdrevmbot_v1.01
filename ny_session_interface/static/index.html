@@ -73,6 +73,20 @@
       </section>
     </div>
 
+    <!-- Équité + P&L du jour -->
+    <section class="card">
+      <h2>Équité &amp; P&amp;L du jour</h2>
+      <div class="pnl-tiles">
+        <div class="pnl-tile"><span class="pnl-lbl">Réalisé</span><b id="s-realized">—</b></div>
+        <div class="pnl-tile"><span class="pnl-lbl">Flottant</span><b id="s-floating">—</b></div>
+        <div class="pnl-tile"><span class="pnl-lbl">Total</span><b id="s-total">—</b></div>
+        <div class="pnl-tile"><span class="pnl-lbl">Rendement</span><b id="s-return">—</b></div>
+        <div class="pnl-tile"><span class="pnl-lbl">Trades fermés</span><b id="s-closed">—</b></div>
+        <div class="pnl-tile"><span class="pnl-lbl">Winrate</span><b id="s-winrate">—</b></div>
+      </div>
+      <canvas id="eq-chart" height="170"></canvas>
+    </section>
+
     <!-- Positions -->
     <section class="card">
       <h2>Positions ouvertes <span id="pos-count" class="count">0</span></h2>

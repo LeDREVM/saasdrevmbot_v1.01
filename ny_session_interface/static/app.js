@@ -150,6 +150,66 @@ function renderSignals(list) {
   }).join("");
 }
 
+// ── Stats P&L + courbe d'équité ────────────────────────────────────────────--
+function setSigned(id, v, cur) {
+  const el = $(id);
+  el.textContent = (v >= 0 ? "+" : "") + fmt(v) + (cur ? " " + cur : "");
+  el.className = v >= 0 ? "pnl-pos" : "pnl-neg";
+}
+
+function renderStats(s) {
+  const cur = s.currency || "";
+  setSigned("s-realized", s.realized_pnl, cur);
+  setSigned("s-floating", s.floating_pnl, cur);
+  setSigned("s-total", s.total_pnl, cur);
+  const r = $("s-return");
+  r.textContent = (s.return_pct >= 0 ? "+" : "") + s.return_pct + "%";
+  r.className = s.return_pct >= 0 ? "pnl-pos" : "pnl-neg";
+  $("s-closed").textContent = `${s.closed_count} (${s.wins}W/${s.losses}L)`;
+  $("s-winrate").textContent = s.closed_count ? s.winrate + "%" : "—";
+}
+
+let lastEqPoints = [];
+function drawEquity(points) {
+  lastEqPoints = points;
+  const c = $("eq-chart");
+  const ctx = c.getContext("2d");
+  const w = c.clientWidth || (c.parentElement.clientWidth - 32);
+  c.width = w;
+  const h = c.height;
+  ctx.clearRect(0, 0, w, h);
+  if (!points || points.length < 2) {
+    ctx.fillStyle = "#8b949e"; ctx.font = "12px sans-serif";
+    ctx.fillText("En attente de données d'équité (moteur en marche)…", 10, h / 2);
+    return;
+  }
+  const eq = points.map((p) => p.equity);
+  let min = Math.min(...eq), max = Math.max(...eq);
+  if (min === max) { min -= 1; max += 1; }
+  const padv = (max - min) * 0.12; min -= padv; max += padv;
+  const X = (i) => 4 + (i / (eq.length - 1)) * (w - 8);
+  const Y = (v) => h - 8 - ((v - min) / (max - min)) * (h - 16);
+  const base = eq[0];
+  const up = eq[eq.length - 1] >= base;
+  const col = up ? "#2ea043" : "#da3633";
+
+  // ligne de base (équité de départ)
+  ctx.strokeStyle = "#2a313c"; ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.moveTo(0, Y(base)); ctx.lineTo(w, Y(base)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // courbe
+  ctx.beginPath(); ctx.moveTo(X(0), Y(eq[0]));
+  for (let i = 1; i < eq.length; i++) ctx.lineTo(X(i), Y(eq[i]));
+  ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.stroke();
+
+  // remplissage
+  ctx.lineTo(X(eq.length - 1), h); ctx.lineTo(X(0), h); ctx.closePath();
+  ctx.fillStyle = up ? "rgba(46,160,67,.12)" : "rgba(218,54,51,.12)";
+  ctx.fill();
+}
+window.addEventListener("resize", () => drawEquity(lastEqPoints));
+
 // ── Logs (incrémental) ─────────────────────────────────────────────────────---
 let lastLogIdx = -1;
 function appendLogs(list) {
@@ -171,16 +231,20 @@ function escapeHtml(s) { const d = document.createElement("div"); d.textContent 
 // ── Boucle de polling ──────────────────────────────────────────────────────---
 async function poll() {
   try {
-    const [state, pos, sig, logs] = await Promise.all([
+    const [state, pos, sig, logs, eq, stats] = await Promise.all([
       api("/api/state"),
       api("/api/positions"),
       api("/api/signals"),
       api(`/api/logs?after=${lastLogIdx}`),
+      api("/api/equity"),
+      api("/api/stats"),
     ]);
     renderState(state);
     renderPositions(pos.positions);
     renderSignals(sig.signals);
     appendLogs(logs.logs);
+    renderStats(stats);
+    drawEquity(eq.points);
   } catch (e) {
     $("badge-conn").textContent = "API injoignable";
     $("badge-conn").className = "badge badge-warn";

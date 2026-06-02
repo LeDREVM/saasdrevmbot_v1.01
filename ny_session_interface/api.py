@@ -70,6 +70,16 @@ def get_logs(after: int = -1):
     return {"logs": engine.recent_logs(after)}
 
 
+@app.get("/api/equity")
+def get_equity():
+    return {"points": engine.equity_series()}
+
+
+@app.get("/api/stats")
+def get_stats():
+    return engine.stats()
+
+
 # ── Commandes ─────────────────────────────────────────────────────────────---
 @app.post("/api/control/start")
 def control_start(x_api_token: str | None = Header(default=None)):
