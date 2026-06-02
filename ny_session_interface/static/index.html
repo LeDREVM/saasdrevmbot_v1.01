@@ -87,6 +87,20 @@
       <canvas id="eq-chart" height="170"></canvas>
     </section>
 
+    <!-- Trades fermés -->
+    <section class="card">
+      <h2>Trades fermés <span id="closed-count" class="count">0</span></h2>
+      <table class="tbl">
+        <thead><tr>
+          <th>Heure</th><th>Symbole</th><th>Sens</th><th>Lots</th>
+          <th>Entrée</th><th>Sortie</th><th>PnL</th><th>Motif</th>
+        </tr></thead>
+        <tbody id="closed-body">
+          <tr class="empty"><td colspan="8">Aucun trade fermé</td></tr>
+        </tbody>
+      </table>
+    </section>
+
     <!-- Positions -->
     <section class="card">
       <h2>Positions ouvertes <span id="pos-count" class="count">0</span></h2>

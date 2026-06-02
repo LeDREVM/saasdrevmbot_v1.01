@@ -167,6 +167,28 @@ function renderStats(s) {
   r.className = s.return_pct >= 0 ? "pnl-pos" : "pnl-neg";
   $("s-closed").textContent = `${s.closed_count} (${s.wins}W/${s.losses}L)`;
   $("s-winrate").textContent = s.closed_count ? s.winrate + "%" : "—";
+  renderClosed(s.recent_closed || []);
+}
+
+function renderClosed(list) {
+  $("closed-count").textContent = list.length;
+  const body = $("closed-body");
+  if (!list.length) {
+    body.innerHTML = '<tr class="empty"><td colspan="8">Aucun trade fermé</td></tr>';
+    return;
+  }
+  body.innerHTML = list.map((t) => {
+    const dirCls = t.type === "BUY" ? "dir-buy" : "dir-sell";
+    const pnlCls = t.pnl >= 0 ? "pnl-pos" : "pnl-neg";
+    const time = (t.ts || "").replace("T", " ").replace("+00:00", "");
+    return `<tr>
+      <td>${time}</td><td>${t.symbol}</td>
+      <td class="${dirCls}">${t.type}</td><td>${fmt(t.volume)}</td>
+      <td>${t.entry}</td><td>${t.exit}</td>
+      <td class="${pnlCls}">${(t.pnl >= 0 ? "+" : "") + fmt(t.pnl)}</td>
+      <td>${t.reason || ""}</td>
+    </tr>`;
+  }).join("");
 }
 
 let lastEqPoints = [];
