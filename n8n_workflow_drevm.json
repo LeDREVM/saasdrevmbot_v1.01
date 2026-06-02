@@ -1,0 +1,224 @@
+{
+  "name": "DreVM — MT5 → Supabase + Alertes",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "drevm",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-receiver",
+      "name": "📡 Webhook MT5",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "drevm-mt5-webhook",
+      "notes": "URL : http://votre-n8n:5678/webhook/drevm\nAutoriser dans MT5 : Outils → Options → Expert Advisors"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.body.api_key }}",
+              "rightValue": "={{ $env.DREVM_API_KEY }}",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "auth-check",
+      "name": "🔐 Vérif API Key",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"error\": \"Unauthorized\" }",
+        "options": { "responseCode": 401 }
+      },
+      "id": "reject-unauthorized",
+      "name": "❌ Rejet 401",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [460, 480]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.body.type }}",
+              "rightValue": "signal",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "route-type",
+      "name": "🔀 Router signal / event",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "mt5_signals",
+        "columns": "symbol,timeframe,bar_time,open,high,low,close,volume,rsi,wyckoff_event,score,bias,session,fib_618,fib_786,spread,created_at",
+        "additionalFields": {},
+        "options": {}
+      },
+      "id": "supabase-insert-signal",
+      "name": "🗄️ Supabase — Insert Signal",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [900, 200],
+      "credentials": { "postgres": { "id": "supabase-postgres", "name": "Supabase DB" } },
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.mt5_signals (symbol, timeframe, bar_time, open, high, low, close, volume, rsi, wyckoff_event, score, bias, session, fib_618, fib_786, spread) VALUES ('{{ $json.body.symbol }}', '{{ $json.body.timeframe }}', '{{ $json.body.time }}', {{ $json.body.open }}, {{ $json.body.high }}, {{ $json.body.low }}, {{ $json.body.close }}, {{ $json.body.volume }}, {{ $json.body.rsi }}, '{{ $json.body.wyckoff_event }}', {{ $json.body.score }}, '{{ $json.body.bias }}', '{{ $json.body.session }}', {{ $json.body.fib_618 }}, {{ $json.body.fib_786 }}, {{ $json.body.spread }}) RETURNING id;"
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.mt5_events (symbol, event_type, price, event_time) VALUES ('{{ $json.body.symbol }}', '{{ $json.body.event }}', {{ $json.body.price }}, '{{ $json.body.time }}') RETURNING id;"
+      },
+      "id": "supabase-insert-event",
+      "name": "🗄️ Supabase — Insert Event",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [900, 440],
+      "credentials": { "postgres": { "id": "supabase-postgres", "name": "Supabase DB" } }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ Math.abs($json.body.score) }}",
+              "rightValue": 4,
+              "operator": { "type": "number", "operation": "gte" }
+            }
+          ]
+        }
+      },
+      "id": "check-strong-signal",
+      "name": "⚡ Score fort (≥4) ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "message": "=🚨 *Signal DreVM — {{ $json.body.symbol }}*\n\n📊 *Biais :* {{ $json.body.bias }}\n📈 *Score :* {{ $json.body.score }}\n🕯 *Wyckoff :* {{ $json.body.wyckoff_event }}\n📉 *RSI :* {{ $json.body.rsi }}\n⏰ *Session :* {{ $json.body.session }}\n💰 *Close :* {{ $json.body.close }}\n🎯 *Fib 0.618 :* {{ $json.body.fib_618 }}\n🎯 *Fib 0.786 :* {{ $json.body.fib_786 }}\n⏱ {{ $json.body.time }}",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "telegram-alert",
+      "name": "📱 Telegram Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1340, 120],
+      "credentials": { "telegramApi": { "id": "telegram-bot", "name": "DreVM Bot" } },
+      "notes": "Configurer : Credentials → Telegram → Bot Token + Chat ID"
+    },
+    {
+      "parameters": {
+        "content": "=## Signal DreVM — {{ $json.body.symbol }}\n\n| Champ | Valeur |\n|---|---|\n| **Biais** | {{ $json.body.bias }} |\n| **Score** | {{ $json.body.score }} |\n| **Wyckoff** | {{ $json.body.wyckoff_event }} |\n| **RSI** | {{ $json.body.rsi }} |\n| **Session** | {{ $json.body.session }} |\n| **Close** | {{ $json.body.close }} |\n| **Fib 0.618** | {{ $json.body.fib_618 }} |\n| **Fib 0.786** | {{ $json.body.fib_786 }} |\n| **Spread** | {{ $json.body.spread }} pts |",
+        "webhookUrl": "={{ $env.DISCORD_WEBHOOK_URL }}"
+      },
+      "id": "discord-alert",
+      "name": "💬 Discord Alert",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [1340, 260],
+      "notes": "Configurer : Variable d'env DISCORD_WEBHOOK_URL"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.journal_entries (symbol, timeframe, bar_time, bias, score, wyckoff_event, session, close_price, rsi, fib_618, fib_786, notes) VALUES ('{{ $json.body.symbol }}', '{{ $json.body.timeframe }}', '{{ $json.body.time }}', '{{ $json.body.bias }}', {{ $json.body.score }}, '{{ $json.body.wyckoff_event }}', '{{ $json.body.session }}', {{ $json.body.close }}, {{ $json.body.rsi }}, {{ $json.body.fib_618 }}, {{ $json.body.fib_786 }}, 'Signal automatique MT5') RETURNING id;"
+      },
+      "id": "supabase-journal",
+      "name": "📓 Journal Supabase",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1340, 400],
+      "credentials": { "postgres": { "id": "supabase-postgres", "name": "Supabase DB" } }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"status\": \"ok\", \"received\": true }",
+        "options": { "responseCode": 200 }
+      },
+      "id": "respond-ok",
+      "name": "✅ Réponse 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1560, 300]
+    }
+  ],
+  "connections": {
+    "📡 Webhook MT5": {
+      "main": [[{ "node": "🔐 Vérif API Key", "type": "main", "index": 0 }]]
+    },
+    "🔐 Vérif API Key": {
+      "main": [
+        [{ "node": "🔀 Router signal / event", "type": "main", "index": 0 }],
+        [{ "node": "❌ Rejet 401", "type": "main", "index": 0 }]
+      ]
+    },
+    "🔀 Router signal / event": {
+      "main": [
+        [{ "node": "🗄️ Supabase — Insert Signal", "type": "main", "index": 0 }],
+        [{ "node": "🗄️ Supabase — Insert Event",  "type": "main", "index": 0 }]
+      ]
+    },
+    "🗄️ Supabase — Insert Signal": {
+      "main": [[{ "node": "⚡ Score fort (≥4) ?", "type": "main", "index": 0 }]]
+    },
+    "🗄️ Supabase — Insert Event": {
+      "main": [[{ "node": "✅ Réponse 200", "type": "main", "index": 0 }]]
+    },
+    "⚡ Score fort (≥4) ?": {
+      "main": [
+        [
+          { "node": "📱 Telegram Alert",  "type": "main", "index": 0 },
+          { "node": "💬 Discord Alert",   "type": "main", "index": 0 },
+          { "node": "📓 Journal Supabase","type": "main", "index": 0 }
+        ],
+        [{ "node": "✅ Réponse 200", "type": "main", "index": 0 }]
+      ]
+    },
+    "📱 Telegram Alert":  { "main": [[{ "node": "✅ Réponse 200", "type": "main", "index": 0 }]] },
+    "💬 Discord Alert":   { "main": [[{ "node": "✅ Réponse 200", "type": "main", "index": 0 }]] },
+    "📓 Journal Supabase":{ "main": [[{ "node": "✅ Réponse 200", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "tags": ["trading", "mt5", "drevm"],
+  "pinData": {},
+  "versionId": "1.0.0",
+  "_readme": {
+    "variables_env": {
+      "DREVM_API_KEY":       "Même clé que InpApiKey dans DreVM_Bridge.mq5",
+      "DISCORD_WEBHOOK_URL": "URL Webhook Discord du salon alertes"
+    },
+    "credentials_needed": [
+      "Supabase DB (Postgres) — host: db.VOTRE_PROJECT.supabase.co, port: 5432",
+      "Telegram Bot API — token du bot + chat_id",
+      "Discord Webhook (optionnel)"
+    ]
+  }
+}
