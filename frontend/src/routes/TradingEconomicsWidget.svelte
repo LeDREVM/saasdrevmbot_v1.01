@@ -30,18 +30,19 @@
 			loading = true;
 			error = null;
 
-			const response = await fetch(`${API_ENDPOINTS.calendar || 'http://localhost:8000/api'}/trading-economics/today`);
-			
+			const response = await fetch('/api/calendar');
+
 			if (!response.ok) {
 				throw new Error(`Erreur HTTP: ${response.status}`);
 			}
 
 			const data = await response.json();
-			
+
 			if (data.success) {
 				events = data.events || [];
+				stats = { total_events: data.total, by_impact: data.by_impact };
 			} else {
-				throw new Error('Erreur lors de la récupération des données');
+				throw new Error(data.error || 'Erreur lors de la récupération des données');
 			}
 
 		} catch (err) {
@@ -53,16 +54,7 @@
 	}
 
 	async function fetchStats() {
-		try {
-			const response = await fetch(`${API_ENDPOINTS.calendar || 'http://localhost:8000/api'}/trading-economics/stats`);
-			const data = await response.json();
-			
-			if (data.success) {
-				stats = data;
-			}
-		} catch (err) {
-			console.error('Erreur stats:', err);
-		}
+		// Stats are now embedded in the /api/calendar response; no separate call needed.
 	}
 
 	/** @param {any} impact */
