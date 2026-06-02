@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NY Session Bot — Console</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">◆</span>
+      <h1>NY Session Bot</h1>
+      <span id="badge-mode" class="badge badge-sim">—</span>
+    </div>
+    <div class="status-cluster">
+      <span id="badge-conn" class="badge">déconnecté</span>
+      <span id="badge-dry" class="badge">—</span>
+      <span id="badge-session" class="badge">session ?</span>
+      <span id="badge-run" class="pill pill-off">ARRÊTÉ</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- Contrôles -->
+    <section class="card controls">
+      <div class="ctrl-row">
+        <button id="btn-start" class="btn btn-green">▶ Démarrer</button>
+        <button id="btn-stop" class="btn btn-amber">⏹ Arrêter</button>
+        <label class="select-wrap">
+          Profil
+          <select id="sel-profile"></select>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" id="tg-dry" />
+          <span>DRY&nbsp;RUN</span>
+        </label>
+        <label class="toggle toggle-danger">
+          <input type="checkbox" id="tg-kill" />
+          <span>KILL&nbsp;SWITCH</span>
+        </label>
+        <button id="btn-closeall" class="btn btn-red">✕ Fermer tout</button>
+      </div>
+      <div class="ctrl-row token-row">
+        <input id="inp-token" type="password" placeholder="API token (si configuré)" />
+        <span id="msg" class="msg"></span>
+      </div>
+    </section>
+
+    <div class="grid">
+      <!-- Compte -->
+      <section class="card">
+        <h2>Compte</h2>
+        <div class="kv"><span>Solde</span><b id="v-balance">—</b></div>
+        <div class="kv"><span>Équité</span><b id="v-equity">—</b></div>
+        <div class="kv"><span>Équité départ jour</span><b id="v-starteq">—</b></div>
+        <div class="kv"><span>Levier</span><b id="v-leverage">—</b></div>
+        <div class="dd-block">
+          <div class="dd-label">Drawdown du jour <span id="v-dd">0%</span> / <span id="v-ddmax">—</span></div>
+          <div class="bar"><div id="dd-fill" class="bar-fill"></div></div>
+        </div>
+      </section>
+
+      <!-- Profil / session -->
+      <section class="card">
+        <h2>Profil &amp; session</h2>
+        <div class="kv"><span>Risque / trade</span><b id="v-risk">—</b></div>
+        <div class="kv"><span>Grade min</span><b id="v-grade">—</b></div>
+        <div class="kv"><span>R:R cible</span><b id="v-rr">—</b></div>
+        <div class="kv"><span>Max trades / symbole</span><b id="v-maxtrades">—</b></div>
+        <div class="kv"><span>Trades du jour</span><b id="v-trades">—</b></div>
+        <div class="kv"><span>Statut entrées</span><b id="v-halted">—</b></div>
+      </section>
+    </div>
+
+    <!-- Positions -->
+    <section class="card">
+      <h2>Positions ouvertes <span id="pos-count" class="count">0</span></h2>
+      <table class="tbl">
+        <thead><tr>
+          <th>Ticket</th><th>Symbole</th><th>Sens</th><th>Lots</th>
+          <th>Entrée</th><th>Actuel</th><th>SL</th><th>TP</th><th>PnL</th><th></th>
+        </tr></thead>
+        <tbody id="pos-body">
+          <tr class="empty"><td colspan="10">Aucune position</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <div class="grid">
+      <!-- Signaux -->
+      <section class="card">
+        <h2>Signaux récents</h2>
+        <div id="signals" class="feed"><div class="empty-feed">En attente…</div></div>
+      </section>
+
+      <!-- Logs -->
+      <section class="card">
+        <h2>Logs <button id="btn-clearlog" class="mini">vider</button></h2>
+        <div id="logs" class="logs"></div>
+      </section>
+    </div>
+  </main>
+
+  <footer>
+    <span>⚠️ Trading réel = argent réel. Vérifie DRY&nbsp;RUN avant de passer en live.</span>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
