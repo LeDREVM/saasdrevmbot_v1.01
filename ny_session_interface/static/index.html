@@ -15,6 +15,7 @@
     </div>
     <div class="status-cluster">
       <span id="badge-conn" class="badge">déconnecté</span>
+      <span id="badge-tg" class="badge">Telegram off</span>
       <span id="badge-dry" class="badge">—</span>
       <span id="badge-session" class="badge">session ?</span>
       <span id="badge-run" class="pill pill-off">ARRÊTÉ</span>
@@ -85,6 +86,20 @@
         <div class="pnl-tile"><span class="pnl-lbl">Winrate</span><b id="s-winrate">—</b></div>
       </div>
       <canvas id="eq-chart" height="170"></canvas>
+    </section>
+
+    <!-- Trades fermés -->
+    <section class="card">
+      <h2>Trades fermés <span id="closed-count" class="count">0</span></h2>
+      <table class="tbl">
+        <thead><tr>
+          <th>Heure</th><th>Symbole</th><th>Sens</th><th>Lots</th>
+          <th>Entrée</th><th>Sortie</th><th>PnL</th><th>Motif</th>
+        </tr></thead>
+        <tbody id="closed-body">
+          <tr class="empty"><td colspan="8">Aucun trade fermé</td></tr>
+        </tbody>
+      </table>
     </section>
 
     <!-- Positions -->

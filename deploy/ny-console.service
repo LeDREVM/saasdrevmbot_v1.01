@@ -1,0 +1,21 @@
+[Unit]
+Description=NY Session Bot — Console (FastAPI, simulation sur Linux)
+After=network.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__APP_DIR__/ny_session_interface
+ExecStart=__APP_DIR__/ny_session_interface/.venv/bin/python api.py
+Environment=NY_BOT_HOST=127.0.0.1
+Environment=NY_BOT_PORT=8800
+# Sécurité : décommente pour protéger les commandes par un token
+# Environment=API_TOKEN=change-me
+# Alertes Telegram (optionnel)
+# Environment=TELEGRAM_BOT_TOKEN=xxxx
+# Environment=TELEGRAM_CHAT_ID=xxxx
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

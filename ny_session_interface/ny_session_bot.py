@@ -21,9 +21,12 @@
 from __future__ import annotations
 
 import os
+import random
 import threading
 import time
 import logging
+import urllib.parse
+import urllib.request
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -61,6 +64,10 @@ MT5_SERVER: str | None = None
 KILL_SWITCH_FILE = "STOP.flag"
 MAGIC = 770077
 
+# Alertes Telegram (section 8) — facultatif : définir les variables d'env
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+
 TZ_NY = ZoneInfo("America/New_York")
 NY_SESSION_START = (9, 30)
 NY_SESSION_END = (16, 0)
@@ -85,6 +92,8 @@ SYMBOLS = {
 POLL_SECONDS = 15
 ONE_POSITION_PER_SYMBOL = True
 CLOSE_AT_SESSION_END = True
+# Démo : injecte parfois un setup en SIMULATION pour exercer l'UI (jamais en MT5 réel)
+DEMO_SIGNALS = os.environ.get("DEMO_SIGNALS", "1") != "0"
 NEWS_BLACKOUTS: list[tuple[datetime, datetime]] = []
 
 _GRADE_RANK = {"C": 0, "B": 1, "A": 2, "A+": 3}
@@ -222,6 +231,117 @@ def detect_m5_sweep_and_bos(df_m5: pd.DataFrame):
     return swept, bos
 
 
+# ============================================================================
+# ALERTES TELEGRAM (section 8)
+# ============================================================================
+
+def _telegram_send(text: str):
+    if not (TELEGRAM_TOKEN and TELEGRAM_CHAT_ID):
+        return
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        data = urllib.parse.urlencode({
+            "chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML",
+        }).encode()
+        urllib.request.urlopen(url, data=data, timeout=8)  # noqa: S310
+    except Exception as e:  # noqa: BLE001
+        log.warning("Telegram échec: %s", e)
+
+
+def notify_telegram(text: str):
+    """Envoi non bloquant (thread détaché) pour ne pas ralentir la boucle."""
+    if not (TELEGRAM_TOKEN and TELEGRAM_CHAT_ID):
+        return
+    threading.Thread(target=_telegram_send, args=(text,), daemon=True).start()
+
+
+def _demo_context():
+    """Contexte de démonstration (SIMULATION) : smart signal valide, confluence
+    variable pour produire différents grades. Jamais utilisé en MT5 réel."""
+    up = random.random() < 0.5
+    bias_ok = random.random() < 0.7
+    return MarketContext(
+        h4_bias=("BULLISH" if up else "BEARISH") if bias_ok else ("BEARISH" if up else "BULLISH"),
+        m15_zone_touched=random.random() < 0.7,
+        m5_trigger=(("BUY_TRIGGER" if up else "SELL_TRIGGER") if random.random() < 0.7 else None),
+        rsi_divergence=("BULLISH" if up else "BEARISH"),
+        wyckoff=("SPRING" if up else "UTAD"),
+        price_above_kijun=up,
+    )
+
+
+# ── Moteurs Smart Money (RSI / Ichimoku / Wyckoff / biais / zone / trigger) ──
+
+def rsi(series: pd.Series, period: int = 14) -> pd.Series:
+    """RSI de Wilder (sans dépendance externe)."""
+    delta = series.diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.ewm(alpha=1 / period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1 / period, adjust=False).mean()
+    rs = avg_gain / avg_loss.replace(0, 1e-9)
+    return 100 - 100 / (1 + rs)
+
+
+def get_bias_h4(df_h4: pd.DataFrame) -> str:
+    """Biais H4 (section 2) : close actuel vs close il y a 20 bougies."""
+    return "BULLISH" if df_h4["close"].iloc[-1] > df_h4["close"].iloc[-20] else "BEARISH"
+
+
+def zone_touched_m15(df_m15: pd.DataFrame) -> bool:
+    """Zone de liquidité M15 (section 2) : prix sur l'extrême du range 30 bougies."""
+    high = float(df_m15["high"].rolling(30).max().iloc[-1])
+    low = float(df_m15["low"].rolling(30).min().iloc[-1])
+    price = float(df_m15["close"].iloc[-1])
+    a = atr(df_m15)
+    return bool(abs(price - high) <= a or abs(price - low) <= a)
+
+
+def entry_trigger_m5(df_m5: pd.DataFrame):
+    """Déclencheur M5 (section 2) : bougie haussière/baissière."""
+    last = float(df_m5["close"].iloc[-1])
+    prev = float(df_m5["close"].iloc[-2])
+    if last > prev:
+        return "BUY_TRIGGER"
+    if last < prev:
+        return "SELL_TRIGGER"
+    return None
+
+
+def detect_wyckoff(df: pd.DataFrame):
+    """
+    Wyckoff Spring / UTAD (section 3) — version corrigée du snippet PDF :
+    Spring = mèche sous le plus-bas swing(20) mais clôture au-dessus (faux cassure).
+    UTAD   = mèche au-dessus du plus-haut swing(20) mais clôture en dessous.
+    """
+    prior_high = float(df["high"].rolling(20).max().iloc[-2])
+    prior_low = float(df["low"].rolling(20).min().iloc[-2])
+    last = df.iloc[-1]
+    if float(last["low"]) < prior_low and float(last["close"]) > prior_low:
+        return "SPRING"
+    if float(last["high"]) > prior_high and float(last["close"]) < prior_high:
+        return "UTAD"
+    return None
+
+
+def detect_divergence(df: pd.DataFrame):
+    """RSI divergence (section 4) : compare prix et RSI sur ~10 bougies."""
+    r = rsi(df["close"])
+    p1, p2 = float(df["close"].iloc[-10]), float(df["close"].iloc[-1])
+    r1, r2 = float(r.iloc[-10]), float(r.iloc[-1])
+    if p2 < p1 and r2 > r1:
+        return "BULLISH"
+    if p2 > p1 and r2 < r1:
+        return "BEARISH"
+    return None
+
+
+def price_above_kijun(df: pd.DataFrame, period: int = 26) -> bool:
+    """Filtre Ichimoku (section 5) : prix au-dessus de la Kijun."""
+    kijun = (df["high"].rolling(period).max() + df["low"].rolling(period).min()) / 2
+    return float(df["close"].iloc[-1]) > float(kijun.iloc[-1])
+
+
 def get_rates(symbol: str, timeframe: int, n: int) -> pd.DataFrame | None:
     rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, n)
     if rates is None or len(rates) == 0:
@@ -244,8 +364,14 @@ def build_context(symbol_cfg: dict):
     logical = detect_m15_logical_zone(df_m15)
     swept, bos = detect_m5_sweep_and_bos(df_m5)
     ctx = MarketContext(
-        h4_phase=phase, h4_trend=trend, m15_fib_zone=fib,
-        m15_is_logical_zone=logical, swept_liquidity_side_m5=swept, m5_bos_direction=bos,
+        h4_phase=phase, h4_trend=trend, h4_bias=get_bias_h4(df_h4),
+        m15_fib_zone=fib, m15_is_logical_zone=logical,
+        m15_zone_touched=zone_touched_m15(df_m15),
+        m5_trigger=entry_trigger_m5(df_m5), m5_bos_direction=bos,
+        swept_liquidity_side_m5=swept,
+        rsi_divergence=detect_divergence(df_m5),
+        wyckoff=detect_wyckoff(df_m5),
+        price_above_kijun=price_above_kijun(df_m5),
     )
     return ctx, df_m5, atr(df_m5)
 
@@ -278,6 +404,7 @@ class BotEngine:
         self.dry_run = True
         self.kill_switch = os.path.exists(KILL_SWITCH_FILE)
         self.simulate = SIMULATE
+        self.telegram = bool(TELEGRAM_TOKEN and TELEGRAM_CHAT_ID)
 
         self.state = DailyState()
         self.signals: deque = deque(maxlen=100)
@@ -587,6 +714,16 @@ class BotEngine:
                     continue
 
                 setup = classify_setup(ctx, rr_ratio=profile["rr_target"])
+
+                # Mode démo (SIMULATION seulement) : si aucun signal réel, injecter
+                # occasionnellement un setup type pour exercer toute la chaîne.
+                # Jamais actif en mode MT5 réel → aucun risque sur compte live.
+                demo = False
+                if self.simulate and DEMO_SIGNALS and not setup.is_valid and random.random() < 0.15:
+                    ctx = _demo_context()
+                    setup = classify_setup(ctx, rr_ratio=profile["rr_target"])
+                    demo = setup.is_valid
+
                 if not setup.is_valid:
                     continue
                 if _GRADE_RANK[setup.grade.value] < min_rank:
@@ -594,7 +731,9 @@ class BotEngine:
                              name, setup.setup_type.value, setup.grade.value, profile["min_grade"])
                     continue
 
-                direction = ctx.m5_bos_direction
+                direction = setup.direction or ctx.m5_bos_direction
+                if direction not in ("up", "down"):
+                    continue
                 res = self._open_trade(sym, direction, atr_val, cfg)
                 if res:
                     self.state.trades[name] = self.state.trades.get(name, 0) + 1
@@ -606,10 +745,18 @@ class BotEngine:
                         "symbol": name, "direction": direction, "grade": setup.grade.value,
                         "setup_type": setup.setup_type.value, "dry_run": res.get("dry_run", True),
                         "entry": res.get("entry"), "sl": res.get("sl"), "tp": res.get("tp"),
-                        "lots": res.get("lots"), "journal": journal,
+                        "lots": res.get("lots"), "demo": demo, "journal": journal,
                     }
                     self.signals.appendleft(signal)
                     log.info("📓 Journal: %s", journal)
+                    notify_telegram(
+                        f"🦅 <b>NY SESSION BOT — {name}</b>\n"
+                        f"{'🟢 BUY' if direction == 'up' else '🔴 SELL'} "
+                        f"<b>{setup.grade.value}</b> ({setup.setup_type.value})\n"
+                        f"entrée {res.get('entry')} | SL {res.get('sl')} | TP {res.get('tp')}\n"
+                        f"lots {res.get('lots')} · {'DRY RUN' if res.get('dry_run') else 'LIVE'}\n"
+                        f"divergence {ctx.rsi_divergence} · wyckoff {ctx.wyckoff}"
+                    )
             except Exception as e:  # noqa: BLE001
                 log.exception("[%s] Erreur scan : %s", name, e)
 
@@ -738,6 +885,7 @@ class BotEngine:
                 acc = None
         return {
             "running": self.running, "connected": self.connected, "simulate": self.simulate,
+            "telegram": self.telegram,
             "dry_run": self.dry_run, "kill_switch": self.kill_switch,
             "session_open": self.session_open, "profile": self.profile_name,
             "profiles": list(PROFILES.keys()), "profile_config": self.profile,
