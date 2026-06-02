@@ -1,16 +1,21 @@
 """
 ==============================================================================
- trading_ny_session.py  —  ⚠️ PLACEHOLDER / STUB
+ trading_ny_session.py  —  Smart Money Trading System (scoring & décision)
 ==============================================================================
 
- Ce fichier n'est PAS ta vraie Trading Bible. C'est un substitut minimal qui
- définit les mêmes symboles (enums, dataclasses, classify_setup,
- build_journal_entry) afin que le bot + l'interface tournent de bout en bout
- SANS MetaTrader5 et SANS ta logique propriétaire (mode démo / DRY_RUN).
+ Implémente la logique de décision du "SMART MONEY TRADING SYSTEM" :
+   Multi-Timeframe (H4 biais / M15 zones / M5 entrée) + Wyckoff (Spring/UTAD)
+   + RSI divergence + Ichimoku (Kijun) + scoring A+/A/B/C.
 
- 👉 Remplace ce fichier par ton vrai module `trading_ny_session.py`
-    (backend/app/services/) dès que tu déploies pour de bon. L'interface et le
-    moteur ne dépendent que de l'API publique définie ci-dessous.
+ Répartition des responsabilités :
+   • Le calcul des indicateurs (RSI, Ichimoku, Wyckoff, biais, zones, trigger)
+     est fait dans ny_session_bot.py (détecteurs) et déposé dans MarketContext.
+   • Ce module prend la décision : smart_signal + scoring de confluence.
+
+ Référence : "Smart Money Trading System" (config fournie). Le SMART SIGNAL
+ (section 6) déclenche l'entrée ; le grade reflète la "logique finale"
+ (section 11) — plus la confluence H4/M15/M5 est complète, plus le grade monte
+ (A+ = toutes les conditions alignées).
 ==============================================================================
 """
 
@@ -31,10 +36,10 @@ class HTFPhase(Enum):
 
 
 class FibZone(Enum):
-    SHALLOW = "shallow"          # < 45 %
-    EQUILIBRIUM = "equilibrium"  # 50 – 61.8 %
-    SNIPER = "sniper"            # ~71 %
-    DEEP = "deep"                # 79 – 88.6 %
+    SHALLOW = "shallow"
+    EQUILIBRIUM = "equilibrium"
+    SNIPER = "sniper"
+    DEEP = "deep"
 
 
 class SetupGrade(Enum):
@@ -46,21 +51,30 @@ class SetupGrade(Enum):
 
 class SetupType(Enum):
     NONE = "none"
-    SWEEP_BOS = "sweep+bos"
-    CONTINUATION = "continuation"
-    REVERSAL = "reversal"
+    CONTINUATION = "continuation"   # signal aligné au biais H4
+    REVERSAL = "reversal"           # signal contre le biais H4
 
 
-# ── Données ──────────────────────────────────────────────────────────────────
+# ── Contexte de marché (rempli par les détecteurs) ───────────────────────────
 
 @dataclass
 class MarketContext:
-    h4_phase: HTFPhase
-    h4_trend: str                          # "up" | "down" | "range"
-    m15_fib_zone: FibZone
-    m15_is_logical_zone: bool
-    swept_liquidity_side_m5: Optional[str] # "high" | "low" | None
-    m5_bos_direction: Optional[str]        # "up" | "down" | None
+    # H4 — biais
+    h4_phase: HTFPhase = HTFPhase.ACCUMULATION
+    h4_trend: str = "range"                  # "up" | "down" | "range"
+    h4_bias: str = "BULLISH"                 # "BULLISH" | "BEARISH" (get_bias_h4)
+    # M15 — zones de liquidité
+    m15_fib_zone: FibZone = FibZone.EQUILIBRIUM
+    m15_is_logical_zone: bool = False
+    m15_zone_touched: bool = False           # prix sur l'extrême du range M15(30)
+    # M5 — déclenchement / structure
+    m5_trigger: Optional[str] = None         # "BUY_TRIGGER" | "SELL_TRIGGER"
+    m5_bos_direction: Optional[str] = None   # "up" | "down" (structure)
+    swept_liquidity_side_m5: Optional[str] = None
+    # Moteurs
+    rsi_divergence: Optional[str] = None     # "BULLISH" | "BEARISH"
+    wyckoff: Optional[str] = None            # "SPRING" | "UTAD"
+    price_above_kijun: bool = False          # Ichimoku Kijun(26)
 
 
 @dataclass
@@ -68,71 +82,72 @@ class SetupResult:
     is_valid: bool
     grade: SetupGrade
     setup_type: SetupType
+    direction: Optional[str] = None          # "up" | "down"
     reasons: list = field(default_factory=list)
+    score: int = 0
 
 
-# ── Logique de scoring (PLACEHOLDER — heuristique de démonstration) ───────────
+# ── Décision : SMART SIGNAL + scoring de confluence ──────────────────────────
 
 def classify_setup(ctx: MarketContext, rr_ratio: float = 2.0) -> SetupResult:
-    """
-    ⚠️ Heuristique de démonstration UNIQUEMENT. À remplacer par ta vraie Bible.
+    div = ctx.rsi_divergence
+    wy = ctx.wyckoff
 
-    Idée de base : un setup valide = sweep de liquidité + BOS M5 cohérent avec
-    le sens du sweep. La note monte avec l'alignement H4, la zone logique et la
-    profondeur du retracement Fib.
-    """
-    reasons: list[str] = []
-    swept = ctx.swept_liquidity_side_m5
-    bos = ctx.m5_bos_direction
+    # 1) SMART SIGNAL (section 6) : divergence + Wyckoff + filtre Kijun
+    direction: Optional[str] = None
+    if div == "BULLISH" and wy == "SPRING" and ctx.price_above_kijun:
+        direction = "up"
+    elif div == "BEARISH" and wy == "UTAD" and not ctx.price_above_kijun:
+        direction = "down"
 
-    if not swept or not bos:
-        return SetupResult(False, SetupGrade.C, SetupType.NONE, ["pas de sweep+BOS"])
+    if direction is None:
+        return SetupResult(False, SetupGrade.C, SetupType.NONE, None,
+                           ["pas de smart signal (divergence+Wyckoff+Kijun)"])
 
-    # Sweep des highs → on cherche un retournement baissier (BOS down), et inverse.
-    coherent = (swept == "high" and bos == "down") or (swept == "low" and bos == "up")
-    if not coherent:
-        return SetupResult(False, SetupGrade.C, SetupType.NONE, ["sweep/BOS incohérents"])
+    # 2) LOGIQUE FINALE (section 11) : confluence H4 / M15 / M5
+    bias_ok = (direction == "up" and ctx.h4_bias == "BULLISH") or \
+              (direction == "down" and ctx.h4_bias == "BEARISH")
+    trig_ok = (direction == "up" and ctx.m5_trigger == "BUY_TRIGGER") or \
+              (direction == "down" and ctx.m5_trigger == "SELL_TRIGGER")
+    zone_ok = ctx.m15_zone_touched
 
-    score = 1
-    reasons.append("sweep + BOS cohérents")
+    reasons = ["smart signal " + ("BUY" if direction == "up" else "SELL"),
+               f"divergence {div}", f"wyckoff {wy}",
+               "prix " + ("> Kijun" if ctx.price_above_kijun else "< Kijun")]
+    if bias_ok:
+        reasons.append("H4 biais aligné")
+    if zone_ok:
+        reasons.append("M15 zone touchée")
+    if trig_ok:
+        reasons.append("M5 trigger")
 
-    if ctx.m15_is_logical_zone:
-        score += 1
-        reasons.append("zone logique M15")
+    # 3) GRADE = nombre de confluences de la logique finale (0..3)
+    extras = sum([bias_ok, zone_ok, trig_ok])
+    grade = {3: SetupGrade.A_PLUS, 2: SetupGrade.A, 1: SetupGrade.B}.get(extras, SetupGrade.C)
+    # Score façon PDF (divergence +3, wyckoff +3) enrichi de la confluence.
+    score = 6 + extras
 
-    if ctx.m15_fib_zone in (FibZone.SNIPER, FibZone.DEEP):
-        score += 1
-        reasons.append(f"fib {ctx.m15_fib_zone.value}")
-
-    trend_aligned = (bos == "up" and ctx.h4_trend == "up") or \
-                    (bos == "down" and ctx.h4_trend == "down")
-    if trend_aligned:
-        score += 1
-        reasons.append("aligné tendance H4")
-        setup_type = SetupType.CONTINUATION
-    else:
-        setup_type = SetupType.REVERSAL
-
-    grade = {1: SetupGrade.B, 2: SetupGrade.A, 3: SetupGrade.A, 4: SetupGrade.A_PLUS}.get(
-        score, SetupGrade.B
-    )
-    return SetupResult(True, grade, setup_type, reasons)
+    setup_type = SetupType.CONTINUATION if bias_ok else SetupType.REVERSAL
+    return SetupResult(True, grade, setup_type, direction, reasons, score)
 
 
 def build_journal_entry(symbol: str, context: MarketContext, setup: SetupResult,
                         risk_r_percent: float, result_r=None,
                         discipline_score=None) -> dict:
-    """Construit une entrée de journal (compatible avec l'interface)."""
     return {
         "symbol": symbol,
+        "direction": setup.direction,
         "setup_type": setup.setup_type.value,
         "grade": setup.grade.value,
+        "score": setup.score,
+        "h4_bias": context.h4_bias,
         "h4_phase": context.h4_phase.value,
-        "h4_trend": context.h4_trend,
-        "fib_zone": context.m15_fib_zone.value,
-        "logical_zone": context.m15_is_logical_zone,
-        "swept": context.swept_liquidity_side_m5,
-        "bos": context.m5_bos_direction,
+        "divergence": context.rsi_divergence,
+        "wyckoff": context.wyckoff,
+        "price_above_kijun": context.price_above_kijun,
+        "m15_zone_touched": context.m15_zone_touched,
+        "m15_fib_zone": context.m15_fib_zone.value,
+        "m5_trigger": context.m5_trigger,
         "risk_pct": risk_r_percent,
         "result_r": result_r,
         "discipline_score": discipline_score,

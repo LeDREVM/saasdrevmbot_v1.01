@@ -44,6 +44,45 @@ fictives, des signaux, l'équité bouger) sans aucun risque.
 5. **Reste en DRY RUN** jusqu'à validation, puis bascule en compte démo, et
    seulement ensuite en live.
 
+## Stratégie — Smart Money Trading System
+
+La décision suit la config fournie (multi-timeframe + Wyckoff + divergence) :
+
+| Étage | Rôle | Fichier |
+|---|---|---|
+| **H4** | Biais (`close` vs `close[-20]`) | `ny_session_bot.get_bias_h4` |
+| **M15** | Zone de liquidité (extrême range 30) | `zone_touched_m15` |
+| **M5** | Déclencheur bougie | `entry_trigger_m5` |
+| **Wyckoff** | Spring / UTAD (faux cassure swing 20) | `detect_wyckoff` |
+| **RSI** | Divergence prix / RSI(14) | `detect_divergence` |
+| **Ichimoku** | Filtre Kijun(26) | `price_above_kijun` |
+| **Décision** | Smart signal + scoring A+/A/B/C | `trading_ny_session.classify_setup` |
+
+- **Smart signal** (entrée) : divergence haussière + Spring + prix > Kijun → **BUY** ;
+  divergence baissière + UTAD + prix < Kijun → **SELL**.
+- **Grade** = confluence de la « logique finale » (biais H4 + zone M15 + trigger M5) :
+  3/3 → **A+**, 2 → **A**, 1 → **B**, 0 → **C**. Chaque profil n'entre qu'à partir
+  de son `min_grade`.
+- **SL/TP** : gérés par le moteur (SL = ATR × `sl_atr_mult`, TP = `rr_target`).
+
+> Le snippet Wyckoff du PDF était contradictoire (`last < low` ET `close > low`
+> avec `last == close`) : il a été corrigé en détection de faux cassure (mèche
+> au-delà du swing, clôture en deçà).
+
+## Alertes Telegram (section 8)
+
+Optionnel. Définis les deux variables d'environnement puis relance :
+
+```bash
+export TELEGRAM_BOT_TOKEN="123456:ABC..."
+export TELEGRAM_CHAT_ID="987654321"
+python api.py
+```
+
+À chaque signal exécuté, le bot envoie un message (sens, grade, entrée/SL/TP,
+DRY/LIVE, divergence/Wyckoff). L'envoi est non bloquant. Le badge « Telegram ✓ »
+apparaît dans la console quand c'est actif.
+
 ## Sécurité ⚠️
 
 Ce serveur peut envoyer des **ordres réels** (quand DRY RUN est OFF).

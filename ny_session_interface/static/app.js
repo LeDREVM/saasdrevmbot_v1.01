@@ -51,6 +51,10 @@ function renderState(s) {
   dry.textContent = s.dry_run ? "DRY RUN" : "ORDRES RÉELS";
   dry.className = "badge " + (s.dry_run ? "badge-on" : "badge-live");
 
+  const tg = $("badge-tg");
+  tg.textContent = s.telegram ? "Telegram ✓" : "Telegram off";
+  tg.className = "badge " + (s.telegram ? "badge-on" : "");
+
   const sess = $("badge-session");
   sess.textContent = s.session_open ? "session NY ouverte" : "hors session";
   sess.className = "badge " + (s.session_open ? "badge-on" : "");
@@ -143,7 +147,7 @@ function renderSignals(list) {
       <div class="sig-top">
         <span><b class="${dirCls}">${s.symbol} ${s.direction === "up" ? "▲" : "▼"}</b>
         <span class="grade ${gradeCls}">${s.grade}</span> ${s.setup_type}</span>
-        <span>${s.dry_run ? "DRY" : "LIVE"} ${fmt(s.lots)} lot</span>
+        <span>${s.demo ? "DEMO · " : ""}${s.dry_run ? "DRY" : "LIVE"} ${fmt(s.lots)} lot</span>
       </div>
       <div class="sig-meta">${t} · entrée ${s.entry} · SL ${s.sl} · TP ${s.tp}</div>
     </div>`;
