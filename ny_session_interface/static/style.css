@@ -141,6 +141,14 @@ select, #inp-token {
 .bar { height: 8px; background: var(--panel-2); border-radius: 5px; overflow: hidden; }
 .bar-fill { height: 100%; width: 0; background: var(--green); transition: width .3s, background .3s; }
 
+/* P&L tiles + equity chart */
+.pnl-tiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 14px; }
+@media (max-width: 760px) { .pnl-tiles { grid-template-columns: repeat(3, 1fr); } }
+.pnl-tile { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px; display: flex; flex-direction: column; gap: 3px; }
+.pnl-lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); }
+.pnl-tile b { font-size: 15px; font-variant-numeric: tabular-nums; }
+#eq-chart { width: 100%; display: block; }
+
 /* Table */
 .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tbl th { text-align: left; color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; padding: 6px 8px; border-bottom: 1px solid var(--border); }
