@@ -63,17 +63,20 @@
 
 <style>
   .event-card {
-    background: white;
-    border-radius: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(12px);
+    border-radius: var(--radius);
     padding: 1.5rem;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    box-shadow: var(--shadow-sm);
     border-left: 4px solid;
-    transition: transform 0.2s, box-shadow 0.2s;
+    transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
   }
-  
+
   .event-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    box-shadow: var(--shadow);
+    border-color: var(--border-strong);
   }
   
   .event-header {
@@ -91,13 +94,14 @@
   
   .time {
     font-size: 0.9rem;
-    color: #64748b;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
   }
-  
+
   .currency {
     font-weight: 700;
     font-size: 1.1rem;
-    color: #1e293b;
+    color: var(--text);
   }
   
   .impact {
@@ -109,16 +113,17 @@
   
   .event-name {
     font-size: 1.1rem;
-    color: #1e293b;
+    color: var(--text);
     margin-bottom: 1rem;
     line-height: 1.4;
   }
-  
+
   .event-data {
     display: flex;
     gap: 1.5rem;
     padding: 1rem;
-    background: #f8fafc;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
     border-radius: 8px;
     margin-bottom: 0.75rem;
   }
@@ -135,18 +140,19 @@
   
   .label {
     font-size: 0.75rem;
-    color: #64748b;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
-  
+
   .value {
     font-size: 1rem;
-    color: #1e293b;
+    color: var(--text);
+    font-family: var(--font-mono);
   }
-  
+
   .event-footer {
     font-size: 0.75rem;
-    color: #94a3b8;
+    color: var(--text-dim);
   }
 </style>

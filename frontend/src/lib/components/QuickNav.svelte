@@ -44,28 +44,29 @@
 		align-items: center;
 		gap: 8px;
 		padding: 12px 20px;
-		background: white;
-		border: 2px solid #e5e7eb;
-		border-radius: 12px;
+		background: var(--surface);
+		border: 1px solid var(--border);
+		backdrop-filter: blur(12px);
+		border-radius: var(--radius-sm);
 		text-decoration: none;
-		color: #6b7280;
+		color: var(--text-muted);
 		font-weight: 600;
 		transition: all 0.2s;
 		cursor: pointer;
 	}
-	
+
 	.quick-nav-btn:hover {
 		border-color: var(--btn-color);
 		color: var(--btn-color);
 		transform: translateY(-2px);
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+		box-shadow: var(--shadow-sm);
 	}
-	
+
 	.quick-nav-btn.active {
 		background: var(--btn-color);
 		border-color: var(--btn-color);
-		color: white;
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+		color: #fff;
+		box-shadow: var(--shadow-sm);
 	}
 	
 	.btn-icon {

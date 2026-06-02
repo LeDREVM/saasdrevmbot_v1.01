@@ -92,14 +92,14 @@
   .loading, .empty {
     text-align: center;
     padding: 3rem 1rem;
-    color: #64748b;
+    color: var(--text-muted);
   }
-  
+
   .spinner {
     width: 40px;
     height: 40px;
-    border: 4px solid #e5e7eb;
-    border-top-color: #3b82f6;
+    border: 4px solid var(--surface-2);
+    border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 1s linear infinite;
     margin: 0 auto 1rem;
@@ -125,36 +125,39 @@
     display: flex;
     gap: 1rem;
     padding: 1rem;
-    background: #f8fafc;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
     border-radius: 8px;
-    border-left: 3px solid #3b82f6;
+    border-left: 3px solid var(--accent);
     transition: all 0.2s;
   }
-  
+
   .event-item:hover {
-    background: #f1f5f9;
+    border-color: var(--border-strong);
     transform: translateX(4px);
   }
-  
+
   .event-time {
     display: flex;
     flex-direction: column;
     align-items: center;
     min-width: 80px;
     padding: 0.5rem;
-    background: white;
+    background: var(--surface-solid);
+    border: 1px solid var(--border);
     border-radius: 6px;
   }
-  
+
   .time {
     font-size: 1.1rem;
     font-weight: 700;
-    color: #1e293b;
+    color: var(--text);
+    font-family: var(--font-mono);
   }
-  
+
   .date {
     font-size: 0.75rem;
-    color: #64748b;
+    color: var(--text-muted);
     margin-top: 0.25rem;
   }
   
@@ -171,7 +174,7 @@
   
   .currency {
     font-weight: 700;
-    color: #3b82f6;
+    color: var(--accent);
     font-size: 0.9rem;
   }
   
@@ -185,21 +188,23 @@
   
   .event-name {
     font-size: 1rem;
-    color: #1e293b;
+    color: var(--text);
     margin-bottom: 0.5rem;
     font-weight: 600;
   }
-  
+
   .event-data {
     display: flex;
     gap: 1rem;
     font-size: 0.85rem;
-    color: #64748b;
+    color: var(--text-muted);
   }
-  
+
   .data-item {
-    background: white;
+    background: var(--surface-solid);
+    border: 1px solid var(--border);
     padding: 0.25rem 0.5rem;
     border-radius: 4px;
+    font-family: var(--font-mono);
   }
 </style>

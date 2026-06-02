@@ -49,39 +49,40 @@
   }
   
   thead {
-    background: #f8fafc;
+    background: var(--surface-2);
   }
-  
+
   th {
     padding: 1rem;
     text-align: left;
     font-weight: 600;
-    color: #64748b;
+    color: var(--text-muted);
     font-size: 0.875rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
-  
+
   tbody tr {
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--border);
     transition: background 0.2s;
   }
-  
+
   tbody tr:hover {
-    background: #f8fafc;
+    background: var(--surface-2);
   }
-  
+
   td {
     padding: 1rem;
-    color: #1e293b;
+    color: var(--text);
   }
-  
+
   .rank {
     font-weight: 700;
-    color: #3b82f6;
+    color: var(--accent);
     font-size: 1.125rem;
+    font-family: var(--font-mono);
   }
-  
+
   .event-name {
     font-weight: 500;
     max-width: 300px;
@@ -89,30 +90,33 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  
+
   .count {
-    color: #64748b;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
   }
-  
+
   .badge {
     display: inline-block;
     padding: 0.25rem 0.75rem;
-    background: #dbeafe;
-    color: #1e40af;
+    background: var(--accent-grad-soft);
+    color: var(--accent);
+    box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.3);
     border-radius: 9999px;
     font-weight: 600;
     font-size: 0.875rem;
+    font-family: var(--font-mono);
   }
-  
+
   .impact {
-    font-family: monospace;
-    color: #64748b;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
   }
-  
+
   .empty-state {
     text-align: center;
     padding: 3rem;
-    color: #94a3b8;
+    color: var(--text-dim);
   }
   
   .empty-state .emoji {
