@@ -11,11 +11,30 @@
   command = "npm install && npm run build"
   publish = "build"
 
+  # Netlify Functions (à la racine du repo, hors du dossier frontend)
+  functions = "../netlify/functions"
+
 [build.environment]
   NODE_VERSION = "20"
-  # ⚠️  Remplacer par l'URL réelle de ton backend FastAPI déployé
-  # Ex: https://saasdrevmbot.railway.app
-  VITE_API_URL = "https://your-backend-url.railway.app"
+  # VITE_API_URL non requis : le calendrier passe par la Netlify Function /api/calendar
+  VITE_API_URL = ""
+
+# ── Calendrier économique → Netlify Function ──────────────────────────────────
+[[redirects]]
+  from   = "/api/calendar"
+  to     = "/.netlify/functions/calendar"
+  status = 200
+
+# ── Endpoints n8n → Netlify Functions ─────────────────────────────────────────
+[[redirects]]
+  from   = "/api/n8n/calendar/today"
+  to     = "/.netlify/functions/n8n-calendar-today"
+  status = 200
+
+[[redirects]]
+  from   = "/api/n8n/notify/telegram"
+  to     = "/.netlify/functions/n8n-notify-telegram"
+  status = 200
 
 # ── SPA Fallback (SvelteKit adapter-static) ───────────────────────────────────
 [[redirects]]

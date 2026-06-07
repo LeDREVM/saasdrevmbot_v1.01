@@ -19,25 +19,26 @@
   
   async function fetchCalendar() {
     loading = true;
-    
+
     const params = new URLSearchParams({
       currencies: selectedCurrencies.join(','),
       impact: selectedImpact.join(',')
     });
-    
+
     try {
-      const response = await fetch(`http://localhost:8000/api/calendar/today?${params}`);
+      const response = await fetch(`/api/calendar?${params}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
-      events = data.events;
+      events = data.events || [];
     } catch (error) {
       console.error('Erreur fetch calendrier:', error);
+      events = [];
     } finally {
       loading = false;
     }
   }
-  
+
   async function forceSync() {
-    await fetch('http://localhost:8000/api/calendar/sync', { method: 'POST' });
     await fetchCalendar();
   }
   

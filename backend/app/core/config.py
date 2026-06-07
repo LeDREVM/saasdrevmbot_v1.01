@@ -21,7 +21,10 @@ class Settings(BaseSettings):
     # Telegram
     TELEGRAM_BOT_TOKEN: Optional[str] = None
     TELEGRAM_CHAT_ID: Optional[str] = None
-    
+
+    # n8n (secret partagé pour authentifier les appels des workflows)
+    N8N_WEBHOOK_SECRET: Optional[str] = None
+
     # Nextcloud (pour export Markdown)
     NEXTCLOUD_URL: Optional[str] = "https://ledream.kflw.io"
     NEXTCLOUD_SHARE_FOLDER: Optional[str] = "/f/33416"

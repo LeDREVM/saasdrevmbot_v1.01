@@ -4,9 +4,7 @@ import logging
 
 from app.core.config import settings
 from app.core.database import init_db
-from app.api.routes import calendar, stats, nextcloud, alerts, alert_config, trading_economics
-from app.api.routes import n8n as n8n_router
-from app.api.routes import scoring as scoring_router
+from app.api.routes import calendar, stats, nextcloud, alerts, alert_config, trading_economics, n8n
 
 # Configuration du logging
 logging.basicConfig(
@@ -40,8 +38,7 @@ app.include_router(alerts.router, prefix=settings.API_V1_STR)
 app.include_router(alert_config.router, prefix=settings.API_V1_STR)
 app.include_router(nextcloud.router, prefix=settings.API_V1_STR)
 app.include_router(trading_economics.router, prefix=f"{settings.API_V1_STR}/trading-economics", tags=["Trading Economics"])
-app.include_router(n8n_router.router, prefix=settings.API_V1_STR)
-app.include_router(scoring_router.router, prefix=settings.API_V1_STR)
+app.include_router(n8n.router, prefix=settings.API_V1_STR)
 
 
 @app.on_event("startup")
