@@ -81,7 +81,35 @@ Les `id` de credential dans le JSON (`REPLACE_HEADER_AUTH_CREDENTIAL_ID`,
 `REPLACE_NEXTCLOUD_BASIC_AUTH_CREDENTIAL_ID`) sont des placeholders : à l'import,
 n8n demandera de sélectionner/créer la credential correspondante.
 
-### Côté backend (déjà en place)
+### Où héberger les endpoints ? → Netlify (déployé)
+
+Le domaine `https://saasdrevmbot.netlify.app` n'héberge **que** le frontend +
+des Netlify Functions (le backend FastAPI n'y tourne pas). Les endpoints n8n
+sont donc fournis en **Netlify Functions** :
+
+| URL publique | Function | Redirect (`netlify.toml`) |
+| --- | --- | --- |
+| `/api/n8n/calendar/today` | `netlify/functions/n8n-calendar-today.js` | ✅ |
+| `/api/n8n/notify/telegram` | `netlify/functions/n8n-notify-telegram.js` | ✅ |
+
+➡️ Dans n8n, mettre **`SAAS_API_URL = https://saasdrevmbot.netlify.app`**
+(sans slash final). Les appels deviennent
+`https://saasdrevmbot.netlify.app/api/n8n/calendar/today` etc.
+
+**Variables d'env à définir sur Netlify** (Site settings → Environment variables) :
+
+| Variable | Usage |
+| --- | --- |
+| `TE_API_KEY` / `TE_API_SECRET` | Clé Trading Economics (calendrier) |
+| `TELEGRAM_BOT_TOKEN` | Token du bot Telegram |
+| `TELEGRAM_CHAT_ID` | Chat/canal de destination |
+| `N8N_WEBHOOK_SECRET` | Secret partagé : si défini, l'en-tête `X-N8N-Secret` est exigé (401 sinon) |
+
+> Les fonctions Netlify renvoient l'impact capitalisé (`High/Medium/Low`) et la
+> même forme `{ source, date, events, count }` que la route FastAPI, donc le
+> workflow fonctionne sans modification.
+
+### Côté backend FastAPI (alternative auto-hébergée)
 
 - `GET /api/n8n/calendar/today` — calendrier du jour (vérifie `X-N8N-Secret`).
 - `POST /api/n8n/notify/telegram` — formate et envoie sur Telegram
