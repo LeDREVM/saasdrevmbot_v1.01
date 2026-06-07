@@ -17,7 +17,10 @@ export const API_ENDPOINTS = {
 	alerts: `${API_URL}/api/alerts`,
 	alertConfig: `${API_URL}/api/alert-config`,
 	stats: `${API_URL}/api/stats`,
-	nextcloud: `${API_URL}/api/nextcloud`
+	nextcloud: `${API_URL}/api/nextcloud`,
+	scoring: `${API_URL}/api/n8n/scoring`,
+	scoringHistory: `${API_URL}/api/scoring/history`,
+	upcoming: `${API_URL}/api/n8n/upcoming`
 };
 
 // Configuration du cache
