@@ -1,0 +1,137 @@
+{
+  "name": "Calendrier économique → Telegram",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 7,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000001",
+      "name": "Chaque jour 07:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SAAS_API_URL }}/api/n8n/calendar/today",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "impact",
+              "value": "High,Medium"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "a1b2c3d4-0002-4000-8000-000000000002",
+      "name": "GET /api/n8n/calendar/today",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json || {};\nconst events = Array.isArray(data.events) ? data.events : [];\nconst date = data.date || new Date().toISOString().slice(0, 10);\n\nconst impactEmoji = { High: '🔴', Medium: '🟠', Low: '🟡' };\n\nconst lines = [`📅 <b>Calendrier économique — ${date}</b>`, ''];\n\nif (events.length === 0) {\n  lines.push('✅ Aucun événement à fort impact aujourd\\'hui.');\n} else {\n  events.sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));\n  for (const e of events) {\n    const emoji = impactEmoji[e.impact] || '⚪';\n    let line = `${emoji} <b>${e.time || '--:--'}</b>  ${e.currency || ''} — ${e.event || ''}`;\n    const details = [];\n    if (e.forecast) details.push(`prév: ${e.forecast}`);\n    if (e.previous) details.push(`préc: ${e.previous}`);\n    if (e.actual) details.push(`réel: ${e.actual}`);\n    if (details.length) line += `\\n   <i>${details.join('  |  ')}</i>`;\n    lines.push(line);\n  }\n  lines.push('', `<b>Total:</b> ${events.length} événement(s)`);\n}\n\nreturn [{ json: { text: lines.join('\\n') } }];"
+      },
+      "id": "a1b2c3d4-0003-4000-8000-000000000003",
+      "name": "Formater le message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "disable_web_page_preview": true
+        }
+      },
+      "id": "a1b2c3d4-0004-4000-8000-000000000004",
+      "name": "Envoyer sur Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        920,
+        300
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram DrevmBot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Chaque jour 07:00": {
+      "main": [
+        [
+          {
+            "node": "GET /api/n8n/calendar/today",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET /api/n8n/calendar/today": {
+      "main": [
+        [
+          {
+            "node": "Formater le message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formater le message": {
+      "main": [
+        [
+          {
+            "node": "Envoyer sur Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "tags": [
+    {
+      "name": "trading"
+    },
+    {
+      "name": "calendrier"
+    }
+  ]
+}
