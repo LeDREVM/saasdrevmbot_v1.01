@@ -154,8 +154,10 @@ async def trigger_scoring(
     """Lance l'agent IA de scoring et retourne le résultat."""
     try:
         from app.services.ai.scoring_agent import ScoringAgent
+        from app.services.ai import scoring_store
         agent = ScoringAgent()
         result = agent.score_setup(req.dict())
+        scoring_store.save_score(result)
 
         # Notification automatique Discord + Telegram
         _discord.send_high_impact_alert({
