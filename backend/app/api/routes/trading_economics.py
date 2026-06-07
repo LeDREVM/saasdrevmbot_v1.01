@@ -3,7 +3,7 @@ Routes API pour Trading Economics
 """
 
 from fastapi import APIRouter, HTTPException, Query
-from typing import List, Optional
+from typing import Optional
 from datetime import datetime, timedelta
 import logging
 
@@ -11,6 +11,7 @@ from app.services.economic_calendar.tradingeconomics_scraper import TradingEcono
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+_VALID_IMPACTS = {"low", "medium", "high"}
 
 # Cache simple en mémoire
 _cache = {
@@ -43,6 +44,22 @@ def get_cached_events():
     return events
 
 
+def normalize_impact_filter(impact: Optional[str]) -> Optional[str]:
+    """Normalise et valide le filtre d'impact."""
+    if impact is None:
+        return None
+
+    normalized_impact = impact.strip().lower()
+    if normalized_impact not in _VALID_IMPACTS:
+        valid_impacts = ", ".join(sorted(_VALID_IMPACTS))
+        raise HTTPException(
+            status_code=400,
+            detail=f"Impact invalide: '{impact}'. Valeurs acceptées: {valid_impacts}"
+        )
+
+    return normalized_impact
+
+
 @router.get("/today")
 async def get_today_events(
     currency: Optional[str] = Query(None, description="Filtrer par devise (ex: USD, EUR)"),
@@ -56,6 +73,7 @@ async def get_today_events(
     """
     try:
         events = get_cached_events()
+        impact = normalize_impact_filter(impact)
         
         # Appliquer les filtres
         if currency:
@@ -78,6 +96,8 @@ async def get_today_events(
             }
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ Erreur lors de la récupération des événements: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erreur lors de la récupération des données: {str(e)}")
@@ -97,6 +117,7 @@ async def get_week_events(
     try:
         scraper = TradingEconomicsScraper()
         events = scraper.get_week_events()
+        impact = normalize_impact_filter(impact)
         
         # Appliquer les filtres
         if currency:
@@ -125,6 +146,8 @@ async def get_week_events(
             "events_by_date": events_by_date
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ Erreur lors de la récupération des événements: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erreur lors de la récupération des données: {str(e)}")
@@ -171,6 +194,8 @@ async def get_stats():
             "top_countries": sorted(countries.items(), key=lambda x: x[1], reverse=True)[:5]
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ Erreur lors du calcul des statistiques: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erreur lors du calcul des statistiques: {str(e)}")
@@ -194,6 +219,8 @@ async def refresh_cache():
             "timestamp": datetime.now().isoformat()
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ Erreur lors du rafraîchissement: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erreur lors du rafraîchissement: {str(e)}")
@@ -201,7 +228,7 @@ async def refresh_cache():
 
 @router.get("/upcoming")
 async def get_upcoming_events(
-    minutes: int = Query(60, description="Événements dans les X prochaines minutes")
+    minutes: int = Query(60, ge=1, le=1440, description="Événements dans les X prochaines minutes")
 ):
     """
     Récupère les événements à venir dans les X prochaines minutes
@@ -219,8 +246,10 @@ async def get_upcoming_events(
                 time_diff = (event_time - now).total_seconds() / 60  # En minutes
                 
                 if 0 <= time_diff <= minutes:
-                    event['minutes_until'] = int(time_diff)
-                    upcoming.append(event)
+                    upcoming.append({
+                        **event,
+                        'minutes_until': int(time_diff)
+                    })
             except:
                 continue
         
@@ -234,6 +263,8 @@ async def get_upcoming_events(
             "events": upcoming
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ Erreur lors de la récupération des événements à venir: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
