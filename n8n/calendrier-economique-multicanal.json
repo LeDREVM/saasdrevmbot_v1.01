@@ -1,0 +1,258 @@
+{
+  "name": "Calendrier économique — multicanal (Discord + Telegram + Nextcloud)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 6 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "3e248478-e3ca-4602-a05a-772158c82634",
+      "name": "⏰ Cron 06h00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [
+        -720,
+        112
+      ],
+      "typeVersion": 1.3
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SAAS_API_URL }}/api/n8n/calendar/today",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "impact",
+              "value": "High,Medium"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "eb0badf9-68e2-4bd1-9512-9516a0ed238c",
+      "name": "📥 Fetch calendrier",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        -480,
+        112
+      ],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_HEADER_AUTH_CREDENTIAL_ID",
+          "name": "SaaS DrevmBot — X-N8N-Secret"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.count }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ],
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          }
+        },
+        "options": {}
+      },
+      "id": "cca14b1f-6810-4a72-80eb-d5170dca31e0",
+      "name": "🔍 A des événements ?",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        -240,
+        112
+      ],
+      "typeVersion": 2.3
+    },
+    {
+      "parameters": {
+        "jsCode": "// Construit le payload du webhook Discord à partir du calendrier récupéré\nconst data = $('📥 Fetch calendrier').first().json || {};\nconst events = Array.isArray(data.events) ? data.events : [];\nconst date = data.date || new Date().toISOString().slice(0, 10);\n\nconst impactEmoji = { High: '🔴', Medium: '🟠', Low: '🟡' };\nconst impactColor = { High: 15158332, Medium: 15844367, Low: 3066993 };\n\nevents.sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));\n\n// Discord limite à 25 fields par embed\nconst fields = events.slice(0, 25).map((e) => {\n  const details = [];\n  if (e.forecast) details.push(`prév: ${e.forecast}`);\n  if (e.previous) details.push(`préc: ${e.previous}`);\n  if (e.actual) details.push(`réel: ${e.actual}`);\n  return {\n    name: `${impactEmoji[e.impact] || '⚪'} ${e.time || '--:--'} ${e.currency || ''} — ${e.event || ''}`.slice(0, 256),\n    value: (details.join(' | ') || '—').slice(0, 1024),\n    inline: false,\n  };\n});\n\nlet color = impactColor.Low;\nif (events.some((e) => e.impact === 'High')) color = impactColor.High;\nelse if (events.some((e) => e.impact === 'Medium')) color = impactColor.Medium;\n\nconst payload = {\n  username: 'DrevmBot — Calendrier',\n  embeds: [\n    {\n      title: `📅 Calendrier économique — ${date}`,\n      description: `${events.length} événement(s) à fort impact aujourd'hui`,\n      color,\n      fields,\n      footer: { text: `Source: ${data.source || 'api'}` },\n      timestamp: new Date().toISOString(),\n    },\n  ],\n};\n\nreturn [{ json: payload }];"
+      },
+      "id": "8513dbe1-0b55-4471-ac74-e2dba7b2c63a",
+      "name": "🎨 Formater Discord",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        0,
+        0
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "6f5249c9-9470-40f7-ae80-66aacb7ed5b3",
+      "name": "💬 Envoyer Discord",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        240,
+        0
+      ],
+      "typeVersion": 4.4
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SAAS_API_URL }}/api/n8n/notify/telegram",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('📥 Fetch calendrier').first().json) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "493e29be-8068-4774-a9cb-e71976c18ada",
+      "name": "📱 Notifier Telegram",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        240,
+        144
+      ],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_HEADER_AUTH_CREDENTIAL_ID",
+          "name": "SaaS DrevmBot — X-N8N-Secret"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $env.NEXTCLOUD_URL }}/remote.php/dav/files/{{ $env.NEXTCLOUD_USER }}/saasDrevmBot/calendriers/{{ new Date().toISOString().slice(0,10) }}.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($('📥 Fetch calendrier').first().json, null, 2) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "edc13124-d956-4346-aaf4-c254dae8fbbe",
+      "name": "☁️ Upload Nextcloud",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        240,
+        288
+      ],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "REPLACE_NEXTCLOUD_BASIC_AUTH_CREDENTIAL_ID",
+          "name": "Nextcloud DrevmBot"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "183acc17-3711-4da2-a31d-11ab9011296a",
+      "name": "📭 Pas d'événements",
+      "type": "n8n-nodes-base.noOp",
+      "position": [
+        0,
+        240
+      ],
+      "typeVersion": 1
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "⏰ Cron 06h00": {
+      "main": [
+        [
+          {
+            "node": "📥 Fetch calendrier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📥 Fetch calendrier": {
+      "main": [
+        [
+          {
+            "node": "🔍 A des événements ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔍 A des événements ?": {
+      "main": [
+        [
+          {
+            "node": "🎨 Formater Discord",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "📱 Notifier Telegram",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "☁️ Upload Nextcloud",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "📭 Pas d'événements",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🎨 Formater Discord": {
+      "main": [
+        [
+          {
+            "node": "💬 Envoyer Discord",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "tags": []
+}

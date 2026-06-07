@@ -25,6 +25,17 @@
   to     = "/.netlify/functions/calendar"
   status = 200
 
+# ── Endpoints n8n → Netlify Functions ─────────────────────────────────────────
+[[redirects]]
+  from   = "/api/n8n/calendar/today"
+  to     = "/.netlify/functions/n8n-calendar-today"
+  status = 200
+
+[[redirects]]
+  from   = "/api/n8n/notify/telegram"
+  to     = "/.netlify/functions/n8n-notify-telegram"
+  status = 200
+
 # ── SPA Fallback (SvelteKit adapter-static) ───────────────────────────────────
 [[redirects]]
   from   = "/*"
