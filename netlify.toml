@@ -16,12 +16,20 @@
 
 [build.environment]
   NODE_VERSION = "20"
-  # NE PAS fixer VITE_API_URL = "" ici : une chaîne vide est "falsy" et le fallback
-  # localhost:8000 de config.js serait alors figé dans le bundle déployé (injoignable).
-  # Le calendrier public passe par la fonction Netlify /api/calendar (aucun backend requis).
-  # Pour activer les pages qui parlent à FastAPI (alertes, scoring, statut backend),
-  # définir VITE_API_URL dans Netlify → Site settings → Environment variables
-  # avec l'URL du backend FastAPI déployé (ex. https://api.mondomaine.com).
+  # ── Choix du câblage backend (2 modes) ──────────────────────────────────────
+  # MODE A · Reverse-proxy (recommandé) : le front appelle /api/* en RELATIF et
+  #   Netlify proxifie vers tes backends (voir les redirects [proxy backend] plus bas).
+  #   → Poser VITE_API_URL = "" ci-dessous ET décommenter les redirects proxy.
+  #   Avantage : pas de CORS, aucune URL backend figée dans le bundle.
+  #
+  # MODE B · CORS direct : définir VITE_API_URL dans Netlify → Site settings →
+  #   Environment variables avec l'URL FastAPI déployée (ex. https://api.mondomaine.com).
+  #   Ne PAS mettre VITE_API_URL = "" en dur ici en mode B.
+  #
+  # Le calendrier public (/api/calendar) passe toujours par la fonction Netlify,
+  # aucun backend requis pour lui.
+  #
+  # VITE_API_URL = ""   # ← décommenter pour le MODE A (reverse-proxy)
 
 # ── Calendrier économique → Netlify Function ──────────────────────────────────
 [[redirects]]
@@ -39,6 +47,32 @@
   from   = "/api/n8n/notify/telegram"
   to     = "/.netlify/functions/n8n-notify-telegram"
   status = 200
+
+# ── [proxy backend] Reverse-proxy vers les backends (MODE A) ──────────────────
+# Décommenter et remplacer les URLs par tes backends déployés. L'ORDRE compte :
+# ces règles doivent rester AVANT le fallback SPA /* ci-dessous, et la règle
+# Express (spécifique) AVANT la règle FastAPI (générale).
+#
+# Corrélations news/prix = backend Express « GoldyXbOT »
+# [[redirects]]
+#   from   = "/api/stats/correlations"
+#   to     = "https://TON-EXPRESS.exemple.com/api/stats/correlations"
+#   status = 200
+#   force  = true
+#
+# Reste de l'API applicative = backend FastAPI (:splat = tout ce qui suit)
+# [[redirects]]
+#   from   = "/api/*"
+#   to     = "https://TON-FASTAPI.exemple.com/api/:splat"
+#   status = 200
+#   force  = true
+#
+# Health check FastAPI (route racine /health, hors /api/*) — utilisé par la page d'accueil
+# [[redirects]]
+#   from   = "/health"
+#   to     = "https://TON-FASTAPI.exemple.com/health"
+#   status = 200
+#   force  = true
 
 # ── SPA Fallback (SvelteKit adapter-static) ───────────────────────────────────
 [[redirects]]
