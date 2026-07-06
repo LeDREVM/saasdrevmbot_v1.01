@@ -1,6 +1,6 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
-	import { API_ENDPOINTS } from '$lib/config';
+	// Le calendrier public passe par la fonction Netlify (chemin relatif `/api/calendar`).
 
 	/** @type {any[]} */
 	let events = [];

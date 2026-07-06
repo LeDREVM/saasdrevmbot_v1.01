@@ -16,8 +16,12 @@
 
 [build.environment]
   NODE_VERSION = "20"
-  # VITE_API_URL non requis : le calendrier passe par la Netlify Function /api/calendar
-  VITE_API_URL = ""
+  # NE PAS fixer VITE_API_URL = "" ici : une chaîne vide est "falsy" et le fallback
+  # localhost:8000 de config.js serait alors figé dans le bundle déployé (injoignable).
+  # Le calendrier public passe par la fonction Netlify /api/calendar (aucun backend requis).
+  # Pour activer les pages qui parlent à FastAPI (alertes, scoring, statut backend),
+  # définir VITE_API_URL dans Netlify → Site settings → Environment variables
+  # avec l'URL du backend FastAPI déployé (ex. https://api.mondomaine.com).
 
 # ── Calendrier économique → Netlify Function ──────────────────────────────────
 [[redirects]]
