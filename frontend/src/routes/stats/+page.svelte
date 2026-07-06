@@ -29,11 +29,13 @@
     { value: 'XAUUSD', label: 'Gold 🥇' },
   ];
 
-  // ── API base URL : Express :3000 (via proxy Vite en dev, ou relatif en prod) ──
-  // En dev → '/api/...' passe par le proxy Vite (→ http://localhost:3000)
-  // En prod Netlify → variable VITE_API_URL pointe vers le backend déployé
-  const API_BASE = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL)
-    ? import.meta.env.VITE_API_URL
+  // ── API base URL : /api/stats/correlations est une route EXPRESS (GoldyXbOT), ──
+  // pas FastAPI. On ne réutilise donc PAS VITE_API_URL (qui vise FastAPI).
+  //  - En dev  → chemin relatif capté par la règle proxy Vite '/api/stats/correlations' → :3000
+  //  - En prod → variable dédiée VITE_EXPRESS_URL (backend Express déployé), sinon relatif
+  //              (nécessite un redirect Netlify vers Express).
+  const API_BASE = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_EXPRESS_URL)
+    ? import.meta.env.VITE_EXPRESS_URL
     : '';
 
   // ── Fetch principal ───────────────────────────────────────────────────────────
