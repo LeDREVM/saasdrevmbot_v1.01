@@ -70,7 +70,11 @@ def signal_at(window: pd.DataFrame, min_confluence: int) -> Optional[dict]:
       3. TIMING     — mitigation : le prix est revenu dans le gap (point d'entrée).
 
     Wyckoff (Spring/UTAD), divergence RSI et biais ajoutent des points de
-    confluence ; `min_confluence` filtre sur le total /11 (sélectivité).
+    confluence. `min_confluence` filtre sur le total /11 :
+      • les 3 gates obligatoires valent déjà FVG(3)+Ichimoku(2)+mitigation(1) = 6,
+        donc `min_confluence <= 6` = stratégie de base (aucun filtre additionnel) ;
+      • 7 exige EN PLUS un booster (biais H4 aligné ou divergence RSI favorable) ;
+      • 8+ exige un Wyckoff (Spring/UTAD) aligné sur la fenêtre.
     Retourne None si pas de setup, sinon {direction, points, ...}.
     """
     if len(window) < 40:
@@ -243,7 +247,9 @@ def compute_stats(res: BacktestResult) -> dict:
     trades = res.trades
     n = len(trades)
     wins = [t for t in trades if t.pnl > 0]
-    losses = [t for t in trades if t.pnl <= 0]
+    losses = [t for t in trades if t.pnl < 0]     # BE (pnl == 0) = ni gain ni perte
+    breakeven = [t for t in trades if t.pnl == 0]
+    decisive = len(wins) + len(losses)            # winrate hors trades à 0R
     gross_win = sum(t.pnl for t in wins)
     gross_loss = -sum(t.pnl for t in losses)
     ret_pct = (res.end_capital / res.start_capital - 1) * 100 if res.start_capital else 0.0
@@ -258,11 +264,10 @@ def compute_stats(res: BacktestResult) -> dict:
     r_values = [t.r_multiple for t in trades]
     return {
         "trades": n,
-        "wins": len(wins), "losses": len(losses),
-        "winrate": (len(wins) / n * 100) if n else 0.0,
+        "wins": len(wins), "losses": len(losses), "breakeven": len(breakeven),
+        "winrate": (len(wins) / decisive * 100) if decisive else 0.0,
         "return_pct": ret_pct,
-        "profit_factor": (gross_win / gross_loss) if gross_loss else float("inf"),
-        "avg_r": (sum(r_values) / n) if n else 0.0,
+        "profit_factor": (gross_win / gross_loss) if gross_loss else (float("inf") if wins else None),
         "expectancy_r": (sum(r_values) / n) if n else 0.0,
         "max_dd_pct": max_dd,
         "best_r": max(r_values) if r_values else 0.0,
@@ -343,10 +348,12 @@ def render(source: str, args, res: BacktestResult, stats: dict) -> str:
     L.append(f"   • Max drawdown   : -{stats['max_dd_pct']:.2f} %")
     L.append("")
     L.append(" PERFORMANCE")
-    L.append(f"   • Trades         : {stats['trades']}  ({stats['wins']}W / {stats['losses']}L)")
-    L.append(f"   • Winrate        : {stats['winrate']:.1f} %")
+    be = f" / {stats['breakeven']}BE" if stats["breakeven"] else ""
+    L.append(f"   • Trades         : {stats['trades']}  ({stats['wins']}W / {stats['losses']}L{be})")
+    L.append(f"   • Winrate        : {stats['winrate']:.1f} %  (hors BE)")
     pf = stats["profit_factor"]
-    L.append(f"   • Profit factor  : {'∞' if pf == float('inf') else f'{pf:.2f}'}")
+    pf_txt = "—" if pf is None else ("∞" if pf == float("inf") else f"{pf:.2f}")
+    L.append(f"   • Profit factor  : {pf_txt}")
     L.append(f"   • Espérance      : {stats['expectancy_r']:+.2f} R / trade")
     L.append(f"   • Meilleur / pire: {stats['best_r']:+.2f} R / {stats['worst_r']:+.2f} R")
     L.append("")
@@ -371,7 +378,8 @@ def main():
     p.add_argument("--rr", type=float, default=2.0, help="objectif R:R")
     p.add_argument("--sl-atr", dest="sl_atr", type=float, default=1.5, help="SL en multiples d'ATR")
     p.add_argument("--breakeven", type=float, default=1.0, help="passe le SL à BE à ce multiple de R (0=off)")
-    p.add_argument("--min-confluence", dest="min_confluence", type=int, default=6, help="points min /11")
+    p.add_argument("--min-confluence", dest="min_confluence", type=int, default=6,
+                   help="points min /11 : <=6 = base (gates seuls), 7 = +biais/divergence, 8+ = +Wyckoff")
     p.add_argument("--interval", default="1h")
     p.add_argument("--period", default="3mo")
     p.add_argument("--live", action="store_true", help="exiger yfinance (pas de synthétique)")

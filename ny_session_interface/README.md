@@ -127,10 +127,14 @@ moteur live (`detect_wyckoff`, `detect_fvg`, filtre Kijun, divergence RSI,
 2. **Tendance** — filtre Ichimoku : Kijun alignée avec le sens du FVG.
 3. **Timing** — mitigation : le prix est revenu dans le gap.
 
-Wyckoff (Spring/UTAD), divergence et biais ajoutent des points de confluence
-(`--min-confluence`, /11). **Money-management** : `--risk` (défaut 1 %) du capital
-risqué par trade, SL en `--sl-atr` × ATR, TP en `--rr`, break-even à `--breakeven` R,
-compounding.
+Les 3 gates ci-dessus **sont la stratégie de base** (ils valent déjà 6/11 :
+FVG 3 + Ichimoku 2 + mitigation 1). Wyckoff (Spring/UTAD), divergence et biais
+ajoutent des points ; `--min-confluence` (/11) permet d'exiger ces bonus :
+`≤6` = base (gates seuls), `7` = +biais H4 ou divergence favorable, `8+` = +Wyckoff aligné.
+
+**Money-management** : `--risk` (défaut 1 %) du capital risqué par trade
+(une perte au SL = −1R exact), SL en `--sl-atr` × ATR, TP en `--rr`,
+break-even à `--breakeven` R, compounding. Winrate affiché hors trades à break-even.
 
 ```bash
 python backtest_xbrusd.py                          # Brent via yfinance, sinon synthétique
