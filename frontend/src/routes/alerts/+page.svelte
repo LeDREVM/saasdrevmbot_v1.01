@@ -27,8 +27,9 @@
   let loading = true;
   let activeTab = 'overview'; // overview, config, history
 
-  // API Base URL
-  const API_URL = 'http://localhost:8000/api';
+  // API Base URL — source unique : $lib/config.js (VITE_API_URL || localhost:8000, FastAPI)
+  import { API_URL as API_BASE } from '$lib/config.js';
+  const API_URL = `${API_BASE}/api`;
   
   // Fetch functions
   async function fetchSettings() {

@@ -21,7 +21,10 @@ class Settings(BaseSettings):
     # Telegram
     TELEGRAM_BOT_TOKEN: Optional[str] = None
     TELEGRAM_CHAT_ID: Optional[str] = None
-    
+
+    # n8n (secret partagé pour authentifier les appels des workflows)
+    N8N_WEBHOOK_SECRET: Optional[str] = None
+
     # Nextcloud (pour export Markdown)
     NEXTCLOUD_URL: Optional[str] = "https://ledream.kflw.io"
     NEXTCLOUD_SHARE_FOLDER: Optional[str] = "/f/33416"
@@ -34,6 +37,14 @@ class Settings(BaseSettings):
     
     # Cache
     CACHE_TTL: int = 3600  # 1 heure
+
+    # n8n automation
+    N8N_WEBHOOK_SECRET: Optional[str] = None
+    N8N_BASE_URL: Optional[str] = "http://localhost:5678"
+
+    # AI Scoring Agent
+    ANTHROPIC_API_KEY: Optional[str] = None
+    AI_SCORING_MODEL: str = "claude-sonnet-4-6"
 
     # Watchlist (CSV Investing.com export)
     WATCHLIST_CSV_PATH: Optional[str] = "Portefeuille_Watchlist_03162026.csv"

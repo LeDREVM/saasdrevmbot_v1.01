@@ -1,0 +1,422 @@
+//@version=5
+indicator("Wyckoff Institutional V2 | SMC + Wyckoff + Killzones", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=200)
+
+//==================================================
+// INPUTS
+//==================================================
+group_session = "Sessions / Killzones"
+useLondon          = input.bool(true, "Activer London Killzone", group=group_session)
+useNY              = input.bool(true, "Activer NY Killzone", group=group_session)
+londonSession      = input.session("0200-0500", "London Killzone", group=group_session)
+nySession          = input.session("0930-1130", "NY Killzone", group=group_session)
+sessionTimezone    = input.string("America/New_York", "Timezone", group=group_session)
+
+group_structure = "Structure"
+barsToAnalyze    = input.int(120, "Bars To Analyze", minval=30, group=group_structure)
+pivotLen         = input.int(3, "Pivot Length", minval=1, group=group_structure)
+showStructure    = input.bool(true, "Afficher BOS / CHOCH", group=group_structure)
+showLiquidity    = input.bool(true, "Afficher Liquidity Sweeps", group=group_structure)
+eqToleranceTicks = input.int(8, "Tolérance EQH / EQL (ticks)", minval=1, group=group_structure)
+
+group_fibo = "Premium / Discount"
+showFibo          = input.bool(true, "Afficher Fibo", group=group_fibo)
+showPremiumZone   = input.bool(true, "Afficher Premium Zone", group=group_fibo)
+showDiscountZone  = input.bool(true, "Afficher Discount Zone", group=group_fibo)
+premiumColor      = input.color(color.orange, "Premium Zone Color", group=group_fibo)
+discountColor     = input.color(color.aqua, "Discount Zone Color", group=group_fibo)
+zoneTransparency  = input.int(85, "Zone Transparency", minval=0, maxval=100, group=group_fibo)
+
+group_fvg = "Fair Value Gap"
+showFVG            = input.bool(true, "Afficher FVG", group=group_fvg)
+requireFVG         = input.bool(true, "Exiger FVG pour signal", group=group_fvg)
+fvgBullColor       = input.color(color.new(color.green, 82), "Bullish FVG", group=group_fvg)
+fvgBearColor       = input.color(color.new(color.red, 82), "Bearish FVG", group=group_fvg)
+fvgExtendBars      = input.int(20, "Extension FVG", minval=5, group=group_fvg)
+
+group_wyckoff = "Wyckoff Events"
+detectSpringUpthrust = input.bool(true, "Détecter Spring / Upthrust", group=group_wyckoff)
+springLookback       = input.int(12, "Lookback Spring/UT", minval=3, group=group_wyckoff)
+
+group_confirm = "Confirmation"
+requireConfirmation = input.bool(true, "Exiger bougie de confirmation", group=group_confirm)
+confirmType         = input.string("Close Direction", "Type Confirmation", options=["Close Direction", "Engulfing"], group=group_confirm)
+
+group_rsi = "RSI Filter"
+useRSI      = input.bool(true, "Activer filtre RSI", group=group_rsi)
+rsiLen      = input.int(14, "RSI Length", group=group_rsi)
+rsiLongMin  = input.int(45, "RSI min LONG", minval=1, maxval=100, group=group_rsi)
+rsiShortMax = input.int(55, "RSI max SHORT", minval=1, maxval=100, group=group_rsi)
+
+group_rr = "Risk Management"
+showTradeLevels = input.bool(true, "Afficher SL/TP", group=group_rr)
+atrLen          = input.int(14, "ATR Length", group=group_rr)
+slAtrMult       = input.float(1.2, "SL ATR Multiplier", minval=0.1, step=0.1, group=group_rr)
+tp1RR           = input.float(1.5, "TP1 R:R", minval=0.5, step=0.1, group=group_rr)
+tp2RR           = input.float(3.0, "TP2 R:R", minval=1.0, step=0.1, group=group_rr)
+
+group_visual = "Visual"
+showSignals = input.bool(true, "Afficher Signaux", group=group_visual)
+showTable   = input.bool(true, "Afficher Tableau", group=group_visual)
+
+//==================================================
+// SESSIONS
+//==================================================
+inLondon = not na(time(timeframe.period, londonSession, sessionTimezone))
+inNY     = not na(time(timeframe.period, nySession, sessionTimezone))
+killzone = (useLondon and inLondon) or (useNY and inNY)
+
+//==================================================
+// HELPERS
+//==================================================
+tick = syminfo.mintick
+eqTolerance = eqToleranceTicks * tick
+atr = ta.atr(atrLen)
+rsi = ta.rsi(close, rsiLen)
+
+bullishEngulfing = close > open and close >= high[1] and open <= close[1]
+bearishEngulfing = close < open and close <= low[1] and open >= close[1]
+
+confirmBull = confirmType == "Close Direction" ? close > open : bullishEngulfing
+confirmBear = confirmType == "Close Direction" ? close < open : bearishEngulfing
+
+//==================================================
+// SWING RANGE AUTO
+//==================================================
+hh = ta.highest(high, barsToAnalyze)
+ll = ta.lowest(low, barsToAnalyze)
+
+highestOffset = ta.highestbars(high, barsToAnalyze)
+lowestOffset  = ta.lowestbars(low, barsToAnalyze)
+
+highestBarIndex = bar_index + highestOffset
+lowestBarIndex  = bar_index + lowestOffset
+
+isBullishRange = lowestBarIndex < highestBarIndex
+
+rangeTop    = isBullishRange ? hh : ll
+rangeBottom = isBullishRange ? ll : hh
+rangeSize   = math.abs(rangeTop - rangeBottom)
+
+levelPrice(level) =>
+    isBullishRange ? rangeTop - rangeSize * level : rangeBottom + rangeSize * level
+
+p0   = levelPrice(0.0)
+p236 = levelPrice(0.236)
+p382 = levelPrice(0.382)
+p50  = levelPrice(0.5)
+p618 = levelPrice(0.618)
+p71  = levelPrice(0.71)
+p786 = levelPrice(0.786)
+p100 = levelPrice(1.0)
+
+premiumTop = math.max(p618, p71)
+premiumBot = math.min(p618, p71)
+discountTop = math.max(p236, p382)
+discountBot = math.min(p236, p382)
+
+inPremiumZone  = close <= premiumTop and close >= premiumBot
+inDiscountZone = close <= discountTop and close >= discountBot
+
+fiboColor = isBullishRange ? color.blue : color.red
+
+plot(showFibo ? p0 : na, "0%", color=fiboColor, linewidth=2)
+plot(showFibo ? p236 : na, "23.6%", color=fiboColor)
+plot(showFibo ? p382 : na, "38.2%", color=fiboColor)
+plot(showFibo ? p50 : na, "50%", color=fiboColor)
+plot(showFibo ? p618 : na, "61.8%", color=fiboColor, linewidth=2)
+plot(showFibo ? p71 : na, "71%", color=color.orange, linewidth=2)
+plot(showFibo ? p786 : na, "78.6%", color=fiboColor)
+plot(showFibo ? p100 : na, "100%", color=fiboColor, linewidth=2)
+
+premiumA = plot(showPremiumZone ? premiumTop : na, display=display.none)
+premiumB = plot(showPremiumZone ? premiumBot : na, display=display.none)
+fill(premiumA, premiumB, color=color.new(premiumColor, zoneTransparency), title="Premium Zone")
+
+discountA = plot(showDiscountZone ? discountTop : na, display=display.none)
+discountB = plot(showDiscountZone ? discountBot : na, display=display.none)
+fill(discountA, discountB, color=color.new(discountColor, zoneTransparency), title="Discount Zone")
+
+//==================================================
+// PIVOTS / STRUCTURE
+//==================================================
+ph = ta.pivothigh(high, pivotLen, pivotLen)
+pl = ta.pivotlow(low, pivotLen, pivotLen)
+
+var float lastPivotHigh = na
+var float lastPivotLow  = na
+var int lastPivotHighBar = na
+var int lastPivotLowBar = na
+
+if not na(ph)
+    lastPivotHigh := ph
+    lastPivotHighBar := bar_index - pivotLen
+
+if not na(pl)
+    lastPivotLow := pl
+    lastPivotLowBar := bar_index - pivotLen
+
+var int structureBias = 0  // 1 bullish / -1 bearish / 0 neutral
+
+bullBos = not na(lastPivotHigh) and close > lastPivotHigh and close[1] <= lastPivotHigh
+bearBos = not na(lastPivotLow) and close < lastPivotLow and close[1] >= lastPivotLow
+
+bullChoch = structureBias == -1 and bullBos
+bearChoch = structureBias == 1 and bearBos
+
+if bullBos
+    structureBias := 1
+if bearBos
+    structureBias := -1
+
+if showStructure and bullBos
+    line.new(lastPivotHighBar, lastPivotHigh, bar_index, lastPivotHigh, color=color.lime, width=2)
+    label.new(bar_index, lastPivotHigh, bullChoch ? "CHOCH ↑" : "BOS ↑", style=label.style_label_up, color=color.lime, textcolor=color.black)
+
+if showStructure and bearBos
+    line.new(lastPivotLowBar, lastPivotLow, bar_index, lastPivotLow, color=color.red, width=2)
+    label.new(bar_index, lastPivotLow, bearChoch ? "CHOCH ↓" : "BOS ↓", style=label.style_label_down, color=color.red, textcolor=color.white)
+
+//==================================================
+// EQH / EQL
+//==================================================
+var float prevPivotHigh = na
+var float prevPivotLow  = na
+var bool eqh = false
+var bool eql = false
+
+eqh := false
+eql := false
+
+if not na(ph)
+    eqh := not na(prevPivotHigh) and math.abs(ph - prevPivotHigh) <= eqTolerance
+    prevPivotHigh := ph
+
+if not na(pl)
+    eql := not na(prevPivotLow) and math.abs(pl - prevPivotLow) <= eqTolerance
+    prevPivotLow := pl
+
+if showLiquidity and eqh
+    label.new(bar_index - pivotLen, ph, "EQH", style=label.style_label_down, color=color.new(color.yellow, 0), textcolor=color.black)
+
+if showLiquidity and eql
+    label.new(bar_index - pivotLen, pl, "EQL", style=label.style_label_up, color=color.new(color.yellow, 0), textcolor=color.black)
+
+//==================================================
+// LIQUIDITY SWEEPS
+//==================================================
+sweepHigh = not na(lastPivotHigh) and high > lastPivotHigh and close < lastPivotHigh
+sweepLow  = not na(lastPivotLow) and low < lastPivotLow and close > lastPivotLow
+
+if showLiquidity and sweepHigh
+    label.new(bar_index, high, "Sweep High", style=label.style_label_down, color=color.new(color.fuchsia, 0), textcolor=color.white)
+
+if showLiquidity and sweepLow
+    label.new(bar_index, low, "Sweep Low", style=label.style_label_up, color=color.new(color.teal, 0), textcolor=color.white)
+
+//==================================================
+// FVG
+//==================================================
+bullFVG = low > high[2]
+bearFVG = high < low[2]
+
+bullFVGTop = low
+bullFVGBot = high[2]
+
+bearFVGTop = low[2]
+bearFVGBot = high
+
+var float lastBullFVGTop = na
+var float lastBullFVGBot = na
+var float lastBearFVGTop = na
+var float lastBearFVGBot = na
+
+if bullFVG
+    lastBullFVGTop := bullFVGTop
+    lastBullFVGBot := bullFVGBot
+    if showFVG
+        box.new(bar_index - 2, bullFVGTop, bar_index + fvgExtendBars, bullFVGBot, bgcolor=fvgBullColor, border_color=color.new(color.green, 0))
+
+if bearFVG
+    lastBearFVGTop := bearFVGTop
+    lastBearFVGBot := bearFVGBot
+    if showFVG
+        box.new(bar_index - 2, bearFVGTop, bar_index + fvgExtendBars, bearFVGBot, bgcolor=fvgBearColor, border_color=color.new(color.red, 0))
+
+touchBullFVG = not na(lastBullFVGTop) and low <= lastBullFVGTop and high >= lastBullFVGBot
+touchBearFVG = not na(lastBearFVGTop) and high >= lastBearFVGBot and low <= lastBearFVGTop
+
+//==================================================
+// WYCKOFF EVENTS: SPRING / UPTHRUST
+//==================================================
+lowestRecent = ta.lowest(low, springLookback)
+highestRecent = ta.highest(high, springLookback)
+
+spring = detectSpringUpthrust and low < lowestRecent[1] and close > lowestRecent[1]
+upthrust = detectSpringUpthrust and high > highestRecent[1] and close < highestRecent[1]
+
+if detectSpringUpthrust and spring
+    label.new(bar_index, low, "Spring", style=label.style_label_up, color=color.new(color.green, 0), textcolor=color.white)
+
+if detectSpringUpthrust and upthrust
+    label.new(bar_index, high, "Upthrust", style=label.style_label_down, color=color.new(color.red, 0), textcolor=color.white)
+
+//==================================================
+// FILTERS
+//==================================================
+rsiLongOk  = not useRSI or rsi >= rsiLongMin
+rsiShortOk = not useRSI or rsi <= rsiShortMax
+
+bullStructureOk = structureBias == 1 or bullChoch
+bearStructureOk = structureBias == -1 or bearChoch
+
+bullWyckoffOk = spring or sweepLow
+bearWyckoffOk = upthrust or sweepHigh
+
+bullFvgOk = requireFVG ? touchBullFVG : true
+bearFvgOk = requireFVG ? touchBearFVG : true
+
+bullConfirmOk = not requireConfirmation or confirmBull
+bearConfirmOk = not requireConfirmation or confirmBear
+
+//==================================================
+// INSTITUTIONAL SIGNAL LOGIC
+// LONG:
+// - killzone
+// - discount zone
+// - bullish structure
+// - spring or sweep low
+// - bullish FVG
+// - RSI valid
+// - confirmation candle
+//
+// SHORT:
+// - killzone
+// - premium zone
+// - bearish structure
+// - upthrust or sweep high
+// - bearish FVG
+// - RSI valid
+// - confirmation candle
+//==================================================
+longSignal =
+     killzone and
+     inDiscountZone and
+     bullStructureOk and
+     bullWyckoffOk and
+     bullFvgOk and
+     rsiLongOk and
+     bullConfirmOk
+
+shortSignal =
+     killzone and
+     inPremiumZone and
+     bearStructureOk and
+     bearWyckoffOk and
+     bearFvgOk and
+     rsiShortOk and
+     bearConfirmOk
+
+//==================================================
+// ENTRY / SL / TP
+//==================================================
+var line entryLine = na
+var line slLine = na
+var line tp1Line = na
+var line tp2Line = na
+var label tradeLabel = na
+
+entryPriceLong = close
+slLong = math.min(low, nz(lastPivotLow, low)) - atr * slAtrMult
+riskLong = entryPriceLong - slLong
+tp1Long = entryPriceLong + riskLong * tp1RR
+tp2Long = entryPriceLong + riskLong * tp2RR
+
+entryPriceShort = close
+slShort = math.max(high, nz(lastPivotHigh, high)) + atr * slAtrMult
+riskShort = slShort - entryPriceShort
+tp1Short = entryPriceShort - riskShort * tp1RR
+tp2Short = entryPriceShort - riskShort * tp2RR
+
+if showTradeLevels and (longSignal or shortSignal)
+    line.delete(entryLine)
+    line.delete(slLine)
+    line.delete(tp1Line)
+    line.delete(tp2Line)
+    label.delete(tradeLabel)
+
+    if longSignal
+        entryLine := line.new(bar_index, entryPriceLong, bar_index + 20, entryPriceLong, color=color.white, width=2)
+        slLine    := line.new(bar_index, slLong,       bar_index + 20, slLong,       color=color.red, width=2)
+        tp1Line   := line.new(bar_index, tp1Long,      bar_index + 20, tp1Long,      color=color.lime, width=2)
+        tp2Line   := line.new(bar_index, tp2Long,      bar_index + 20, tp2Long,      color=color.green, width=2)
+        tradeLabel := label.new(bar_index, entryPriceLong, "LONG\nEntry: " + str.tostring(entryPriceLong, format.mintick) + "\nSL: " + str.tostring(slLong, format.mintick) + "\nTP1: " + str.tostring(tp1Long, format.mintick) + "\nTP2: " + str.tostring(tp2Long, format.mintick), style=label.style_label_up, color=color.new(color.lime, 0), textcolor=color.black)
+
+    if shortSignal
+        entryLine := line.new(bar_index, entryPriceShort, bar_index + 20, entryPriceShort, color=color.white, width=2)
+        slLine    := line.new(bar_index, slShort,         bar_index + 20, slShort,         color=color.red, width=2)
+        tp1Line   := line.new(bar_index, tp1Short,        bar_index + 20, tp1Short,        color=color.lime, width=2)
+        tp2Line   := line.new(bar_index, tp2Short,        bar_index + 20, tp2Short,        color=color.green, width=2)
+        tradeLabel := label.new(bar_index, entryPriceShort, "SHORT\nEntry: " + str.tostring(entryPriceShort, format.mintick) + "\nSL: " + str.tostring(slShort, format.mintick) + "\nTP1: " + str.tostring(tp1Short, format.mintick) + "\nTP2: " + str.tostring(tp2Short, format.mintick), style=label.style_label_down, color=color.new(color.red, 0), textcolor=color.white)
+
+//==================================================
+// VISUAL SIGNALS
+//==================================================
+plotshape(showSignals and longSignal, title="Institutional LONG", style=shape.labelup, location=location.belowbar, color=color.lime, textcolor=color.black, text="LONG")
+plotshape(showSignals and shortSignal, title="Institutional SHORT", style=shape.labeldown, location=location.abovebar, color=color.red, textcolor=color.white, text="SHORT")
+
+bgcolor(killzone ? color.new(color.blue, 92) : na)
+
+//==================================================
+// ALERTS
+//==================================================
+alertcondition(longSignal, title="Institutional LONG", message="Institutional LONG | {{ticker}} {{interval}} | Discount + Structure + Sweep/Spring + FVG + Confirmation")
+alertcondition(shortSignal, title="Institutional SHORT", message="Institutional SHORT | {{ticker}} {{interval}} | Premium + Structure + Sweep/Upthrust + FVG + Confirmation")
+alertcondition(spring, title="Spring Detected", message="Spring détecté sur {{ticker}} {{interval}}")
+alertcondition(upthrust, title="Upthrust Detected", message="Upthrust détecté sur {{ticker}} {{interval}}")
+alertcondition(sweepLow, title="Sweep Low", message="Liquidity sweep low sur {{ticker}} {{interval}}")
+alertcondition(sweepHigh, title="Sweep High", message="Liquidity sweep high sur {{ticker}} {{interval}}")
+
+//==================================================
+// TABLE
+//==================================================
+var table info = table.new(position.top_right, 2, 13, border_width=1)
+
+if barstate.islast and showTable
+    table.cell(info, 0, 0, "Killzone", text_color=color.white, bgcolor=color.black)
+    table.cell(info, 1, 0, killzone ? "ACTIVE" : "OFF", text_color=color.white, bgcolor=killzone ? color.new(color.green, 50) : color.new(color.red, 50))
+
+    table.cell(info, 0, 1, "Range Bias", text_color=color.white, bgcolor=color.black)
+    table.cell(info, 1, 1, isBullishRange ? "BULLISH" : "BEARISH", text_color=color.white, bgcolor=isBullishRange ? color.new(color.green, 50) : color.new(color.red, 50))
+
+    table.cell(info, 0, 2, "Structure", text_color=color.white, bgcolor=color.black)
+    table.cell(info, 1, 2, structureBias == 1 ? "BULLISH" : structureBias == -1 ? "BEARISH" : "NEUTRAL", text_color=color.white, bgcolor=structureBias == 1 ? color.new(color.green, 50) : structureBias == -1 ? color.new(color.red, 50) : color.new(color.gray, 50))
+
+    table.cell(info, 0, 3, "Premium", text_color=color.white, bgcolor=color.black)
+    table.cell(info, 1, 3, inPremiumZone ? "YES" : "NO", text_color=color.white, bgcolor=inPremiumZone ? color.new(color.orange, 40) : color.new(color.gray, 70))
+
+    table.cell(info, 0, 4, "Discount", text_color=color.white, bgcolor=color.black)
+    table.cell(info, 1, 4, inDiscountZone ? "YES" : "NO", text_color=color.white, bgcolor=inDiscountZone ? color.new(color.aqua, 40) : color.new(color.gray, 70))
+
+    table.cell(info, 0, 5, "Bull FVG", text_color=color.white, bgcolor=color.black)
+    table.cell(info, 1, 5, touchBullFVG ? "TOUCHED" : "NO", text_color=color.white, bgcolor=touchBullFVG ? color.new(color.green, 50) : color.new(color.gray, 70))
+
+    table.cell(info, 0, 6, "Bear FVG", text_color=color.white, bgcolor=color.black)
+    table.cell(info, 1, 6, touchBearFVG ? "TOUCHED" : "NO", text_color=color.white, bgcolor=touchBearFVG ? color.new(color.red, 50) : color.new(color.gray, 70))
+
+    table.cell(info, 0, 7, "Spring", text_color=color.white, bgcolor=color.black)
+    table.cell(info, 1, 7, spring ? "YES" : "NO", text_color=color.white, bgcolor=spring ? color.new(color.green, 50) : color.new(color.gray, 70))
+
+    table.cell(info, 0, 8, "Upthrust", text_color=color.white, bgcolor=color.black)
+    table.cell(info, 1, 8, upthrust ? "YES" : "NO", text_color=color.white, bgcolor=upthrust ? color.new(color.red, 50) : color.new(color.gray, 70))
+
+    table.cell(info, 0, 9, "Sweep Low", text_color=color.white, bgcolor=color.black)
+    table.cell(info, 1, 9, sweepLow ? "YES" : "NO", text_color=color.white, bgcolor=sweepLow ? color.new(color.teal, 50) : color.new(color.gray, 70))
+
+    table.cell(info, 0, 10, "Sweep High", text_color=color.white, bgcolor=color.black)
+    table.cell(info, 1, 10, sweepHigh ? "YES" : "NO", text_color=color.white, bgcolor=sweepHigh ? color.new(color.fuchsia, 50) : color.new(color.gray, 70))
+
+    table.cell(info, 0, 11, "RSI", text_color=color.white, bgcolor=color.black)
+    table.cell(info, 1, 11, str.tostring(rsi, format.mintick), text_color=color.white)
+
+    table.cell(info, 0, 12, "Signal", text_color=color.white, bgcolor=color.black)
+    table.cell(info, 1, 12, longSignal ? "LONG" : shortSignal ? "SHORT" : "NONE", text_color=color.white, bgcolor=longSignal ? color.new(color.lime, 15) : shortSignal ? color.new(color.red, 15) : color.new(color.gray, 70))

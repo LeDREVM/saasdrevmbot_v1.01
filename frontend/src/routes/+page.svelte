@@ -2,9 +2,10 @@
   import { onMount } from 'svelte';
   import TradingEconomicsWidget from './TradingEconomicsWidget.svelte';
   import TradingViewPanel from '$lib/components/TradingViewPanel.svelte';
+  import { API_URL } from '$lib/config.js';
 
-  // Configuration de l'API (utilise l'env var ou localhost)
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+  // API_URL provient de $lib/config.js (VITE_API_URL || http://localhost:8000, FastAPI).
+  // /health, /api/nextcloud/status et /api/docs sont des routes FastAPI.
 
   let stats = {
     backend: { status: 'checking', url: API_URL },

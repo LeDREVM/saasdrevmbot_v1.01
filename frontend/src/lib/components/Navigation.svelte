@@ -7,6 +7,7 @@
 		{ path: '/', icon: '🏠', label: 'Accueil', description: 'Dashboard principal' },
 		{ path: '/calendar', icon: '📅', label: 'Calendrier', description: 'Événements économiques' },
 		{ path: '/alerts', icon: '🔔', label: 'Alertes', description: 'Notifications et config' },
+		{ path: '/scoring', icon: '🤖', label: 'Scoring IA', description: 'Analyse des setups par IA' },
 		{ path: '/stats', icon: '📊', label: 'Statistiques', description: 'Analyses et corrélations' }
 	];
 

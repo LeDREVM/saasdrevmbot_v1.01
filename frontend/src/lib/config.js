@@ -12,12 +12,20 @@ export const IS_DEV = MODE === 'development';
 export const IS_PROD = MODE === 'production';
 
 // Configuration des endpoints API
+// Source principale : FastAPI (API_URL). Exception : le calendrier public est
+// servi par la fonction Netlify via le chemin relatif `/api/calendar` (redirect
+// netlify.toml → /.netlify/functions/calendar), donc volontairement SANS API_URL.
 export const API_ENDPOINTS = {
-	calendar: `${API_URL}/api/calendar`,
+	calendar: '/api/calendar', // Fonction Netlify (chemin relatif volontaire)
+	calendarToday: `${API_URL}/api/calendar/today`,
 	alerts: `${API_URL}/api/alerts`,
 	alertConfig: `${API_URL}/api/alert-config`,
 	stats: `${API_URL}/api/stats`,
-	nextcloud: `${API_URL}/api/nextcloud`
+	nextcloud: `${API_URL}/api/nextcloud`,
+	scoringHistory: `${API_URL}/api/scoring/history`,
+	scoringStats: `${API_URL}/api/scoring/stats`,
+	scoringAnalyze: `${API_URL}/api/scoring/analyze`,
+	upcoming: `${API_URL}/api/alerts/upcoming`
 };
 
 // Configuration du cache

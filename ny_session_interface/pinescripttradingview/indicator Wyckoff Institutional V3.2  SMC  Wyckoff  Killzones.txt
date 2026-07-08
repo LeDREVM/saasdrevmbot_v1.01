@@ -1,0 +1,658 @@
+//@version=5
+indicator("V3.2 Sniper Pro | Scalping / Intraday + Smart Trail + Clean FVG", overlay=true, max_lines_count=400, max_labels_count=400, max_boxes_count=200)
+
+//====================================================
+// INPUTS
+//====================================================
+group_mode = "Mode"
+mode = input.string("Scalping", "Trading Mode", options=["Scalping", "Intraday"], group=group_mode)
+
+group_session = "Sessions"
+useNY         = input.bool(true, "Use NY Killzone", group=group_session)
+nySession     = input.session("0930-1130", "NY Killzone", group=group_session)
+asiaSession   = input.session("1800-0000", "Asia Range", group=group_session)
+sessionTz     = input.string("America/New_York", "Timezone", group=group_session)
+
+group_structure = "Structure"
+swingLenExtInput   = input.int(10, "External Swing Length", minval=2, group=group_structure)
+swingLenIntInput   = input.int(3, "Internal Swing Length", minval=1, group=group_structure)
+rangeLookbackInput = input.int(120, "Range Lookback", minval=20, group=group_structure)
+showStructure      = input.bool(true, "Show Structure", group=group_structure)
+
+group_zones = "Premium / Discount"
+showPD         = input.bool(true, "Show Premium/Discount", group=group_zones)
+premiumColor   = input.color(color.orange, "Premium Color", group=group_zones)
+discountColor  = input.color(color.aqua, "Discount Color", group=group_zones)
+pdTransparency = input.int(88, "PD Transparency", minval=0, maxval=100, group=group_zones)
+
+group_ob = "OB / Breaker"
+showOB          = input.bool(true, "Show OB", group=group_ob)
+showBreaker     = input.bool(true, "Show Breaker", group=group_ob)
+obExtendBarsInp = input.int(25, "OB Extend", minval=5, group=group_ob)
+keepRecentZones = input.int(4, "Keep Recent Zones", minval=1, maxval=10, group=group_ob)
+
+group_fvg = "FVG"
+useFVGFilter    = input.bool(true, "Require FVG", group=group_fvg)
+showFVG         = input.bool(true, "Show FVG", group=group_fvg)
+fvgExtendBarsIn = input.int(15, "FVG Extend", minval=5, group=group_fvg)
+deleteMitigated = input.bool(true, "Delete Mitigated FVG", group=group_fvg)
+
+group_retest = "Retest"
+requireRetest   = input.bool(true, "Require Retest", group=group_retest)
+retestTolerance = input.int(12, "Retest Ticks Tolerance", minval=1, group=group_retest)
+
+group_displacement = "Displacement"
+useDisplacementFilter = input.bool(true, "Require Displacement Candle", group=group_displacement)
+dispAtrMultInput     = input.float(1.2, "Displacement ATR Mult", minval=0.5, step=0.1, group=group_displacement)
+
+group_filters = "Filters"
+useRSI     = input.bool(true, "Use RSI", group=group_filters)
+rsiLen     = input.int(14, "RSI Length", group=group_filters)
+rsiBullMin = input.int(50, "RSI Min Buy", minval=1, maxval=100, group=group_filters)
+rsiBearMax = input.int(50, "RSI Max Sell", minval=1, maxval=100, group=group_filters)
+
+group_signal = "Signal / Risk"
+confirmByClose   = input.bool(true, "Confirm By Candle Close", group=group_signal)
+showTradeLevels  = input.bool(true, "Show Entry/SL/TP", group=group_signal)
+atrLenInput      = input.int(14, "ATR Length", group=group_signal)
+slAtrMultInput   = input.float(1.2, "SL ATR Mult", minval=0.1, step=0.1, group=group_signal)
+tp1RRInput       = input.float(1.5, "TP1 RR", minval=0.5, step=0.1, group=group_signal)
+tp2RRInput       = input.float(3.0, "TP2 RR", minval=1.0, step=0.1, group=group_signal)
+minScoreToAlert  = input.int(7, "Min Score To Alert", minval=1, maxval=10, group=group_signal)
+
+group_trail = "Trailing Stop"
+useTrailing      = input.bool(true, "Enable Smart Trailing", group=group_trail)
+trailAfterTP1    = input.bool(true, "Activate Trail After TP1 Only", group=group_trail)
+trailAtrMultIn   = input.float(1.0, "Trail ATR Mult", minval=0.1, step=0.1, group=group_trail)
+
+group_alerts = "Alerts"
+enableRealtimeAlert = input.bool(true, "Enable alert()", group=group_alerts)
+
+group_dash = "Dashboard"
+showDashboard = input.bool(true, "Show Dashboard", group=group_dash)
+
+//====================================================
+// MODE OVERRIDES
+//====================================================
+swingLenExt = mode == "Scalping" ? math.max(6, swingLenExtInput - 2) : math.max(10, swingLenExtInput)
+swingLenInt = mode == "Scalping" ? math.max(2, swingLenIntInput) : math.max(3, swingLenIntInput)
+rangeLookback = mode == "Scalping" ? math.max(80, rangeLookbackInput - 20) : math.max(120, rangeLookbackInput)
+obExtendBars = mode == "Scalping" ? math.max(15, obExtendBarsInp - 5) : math.max(25, obExtendBarsInp)
+fvgExtendBars = mode == "Scalping" ? math.max(10, fvgExtendBarsIn - 3) : math.max(18, fvgExtendBarsIn)
+dispAtrMult = mode == "Scalping" ? math.max(1.0, dispAtrMultInput) : math.max(1.2, dispAtrMultInput)
+atrLen = mode == "Scalping" ? math.max(10, atrLenInput) : math.max(14, atrLenInput)
+slAtrMult = mode == "Scalping" ? math.max(0.8, slAtrMultInput) : math.max(1.2, slAtrMultInput)
+tp1RR = mode == "Scalping" ? math.max(1.0, tp1RRInput) : math.max(1.5, tp1RRInput)
+tp2RR = mode == "Scalping" ? math.max(2.0, tp2RRInput) : math.max(3.0, tp2RRInput)
+trailAtrMult = mode == "Scalping" ? math.max(0.6, trailAtrMultIn) : math.max(1.0, trailAtrMultIn)
+
+//====================================================
+// SESSION ENGINE
+//====================================================
+inNY   = not na(time(timeframe.period, nySession, sessionTz))
+inAsia = not na(time(timeframe.period, asiaSession, sessionTz))
+sessionOk = useNY ? inNY : true
+
+//====================================================
+// BASICS
+//====================================================
+tick = syminfo.mintick
+atr  = ta.atr(atrLen)
+rsi  = ta.rsi(close, rsiLen)
+
+bullCandle = close > open
+bearCandle = close < open
+confirmBull = confirmByClose ? bullCandle : true
+confirmBear = confirmByClose ? bearCandle : true
+
+bodySize = math.abs(close - open)
+isBullDisplacement = close > open and bodySize > atr * dispAtrMult
+isBearDisplacement = close < open and bodySize > atr * dispAtrMult
+
+//====================================================
+// ASIA RANGE
+//====================================================
+var float asiaHigh = na
+var float asiaLow  = na
+var line asiaHighLine = na
+var line asiaLowLine = na
+
+newAsia = inAsia and not inAsia[1]
+endAsia = not inAsia and inAsia[1]
+
+if newAsia
+    asiaHigh := high
+    asiaLow  := low
+
+if inAsia
+    asiaHigh := na(asiaHigh) ? high : math.max(asiaHigh, high)
+    asiaLow  := na(asiaLow) ? low : math.min(asiaLow, low)
+
+if endAsia
+    line.delete(asiaHighLine)
+    line.delete(asiaLowLine)
+    asiaHighLine := line.new(bar_index, asiaHigh, bar_index + 100, asiaHigh, color=color.new(color.yellow, 0), width=1, style=line.style_dashed)
+    asiaLowLine  := line.new(bar_index, asiaLow,  bar_index + 100, asiaLow,  color=color.new(color.yellow, 0), width=1, style=line.style_dashed)
+
+sweepAsiaHigh = not na(asiaHigh) and high > asiaHigh and close < asiaHigh
+sweepAsiaLow  = not na(asiaLow) and low < asiaLow and close > asiaLow
+
+//====================================================
+// PREMIUM / DISCOUNT
+//====================================================
+hh = ta.highest(high, rangeLookback)
+ll = ta.lowest(low, rangeLookback)
+highestOffset = ta.highestbars(high, rangeLookback)
+lowestOffset  = ta.lowestbars(low, rangeLookback)
+
+highestBarIndex = bar_index + highestOffset
+lowestBarIndex  = bar_index + lowestOffset
+isBullishRange  = lowestBarIndex < highestBarIndex
+
+rangeTop    = isBullishRange ? hh : ll
+rangeBottom = isBullishRange ? ll : hh
+rangeSize   = math.abs(rangeTop - rangeBottom)
+
+levelPrice(level) =>
+    isBullishRange ? rangeTop - rangeSize * level : rangeBottom + rangeSize * level
+
+p236 = levelPrice(0.236)
+p382 = levelPrice(0.382)
+p50  = levelPrice(0.5)
+p618 = levelPrice(0.618)
+p71  = levelPrice(0.71)
+
+premiumTop = math.max(p618, p71)
+premiumBot = math.min(p618, p71)
+discountTop = math.max(p236, p382)
+discountBot = math.min(p236, p382)
+
+inPremiumZone  = close <= premiumTop and close >= premiumBot
+inDiscountZone = close <= discountTop and close >= discountBot
+
+pa = plot(showPD ? premiumTop : na, display=display.none)
+pb = plot(showPD ? premiumBot : na, display=display.none)
+fill(pa, pb, color=color.new(premiumColor, pdTransparency))
+
+pc = plot(showPD ? discountTop : na, display=display.none)
+pd = plot(showPD ? discountBot : na, display=display.none)
+fill(pc, pd, color=color.new(discountColor, pdTransparency))
+
+plot(showPD ? p50 : na, "EQ", color=color.new(color.white, 50))
+
+//====================================================
+// STRUCTURE
+//====================================================
+phExt = ta.pivothigh(high, swingLenExt, swingLenExt)
+plExt = ta.pivotlow(low, swingLenExt, swingLenExt)
+phInt = ta.pivothigh(high, swingLenInt, swingLenInt)
+plInt = ta.pivotlow(low, swingLenInt, swingLenInt)
+
+var float lastExtHigh = na
+var float lastExtLow  = na
+var int lastExtHighBar = na
+var int lastExtLowBar = na
+
+var float lastIntHigh = na
+var float lastIntLow  = na
+var int lastIntHighBar = na
+var int lastIntLowBar = na
+
+if not na(phExt)
+    lastExtHigh := phExt
+    lastExtHighBar := bar_index - swingLenExt
+if not na(plExt)
+    lastExtLow := plExt
+    lastExtLowBar := bar_index - swingLenExt
+
+if not na(phInt)
+    lastIntHigh := phInt
+    lastIntHighBar := bar_index - swingLenInt
+if not na(plInt)
+    lastIntLow := plInt
+    lastIntLowBar := bar_index - swingLenInt
+
+var int extBias = 0
+var int intBias = 0
+
+extBullBos = not na(lastExtHigh) and close > lastExtHigh and close[1] <= lastExtHigh
+extBearBos = not na(lastExtLow) and close < lastExtLow and close[1] >= lastExtLow
+extBullChoch = extBias == -1 and extBullBos
+extBearChoch = extBias == 1 and extBearBos
+
+if extBullBos
+    extBias := 1
+if extBearBos
+    extBias := -1
+
+intBullBos = not na(lastIntHigh) and close > lastIntHigh and close[1] <= lastIntHigh
+intBearBos = not na(lastIntLow) and close < lastIntLow and close[1] >= lastIntLow
+intBullChoch = intBias == -1 and intBullBos
+intBearChoch = intBias == 1 and intBearBos
+
+if intBullBos
+    intBias := 1
+if intBearBos
+    intBias := -1
+
+if showStructure and extBullBos
+    line.new(lastExtHighBar, lastExtHigh, bar_index, lastExtHigh, color=color.lime, width=2)
+if showStructure and extBearBos
+    line.new(lastExtLowBar, lastExtLow, bar_index, lastExtLow, color=color.red, width=2)
+
+//====================================================
+// ORDER BLOCKS + CLEANUP
+//====================================================
+var box[] bullZones = array.new_box()
+var float[] bullTop = array.new_float()
+var float[] bullBot = array.new_float()
+
+var box[] bearZones = array.new_box()
+var float[] bearTop = array.new_float()
+var float[] bearBot = array.new_float()
+
+cleanupZones(_boxes, _tops, _bots, keepN) =>
+    while array.size(_boxes) > keepN
+        box.delete(array.pop(_boxes))
+        array.pop(_tops)
+        array.pop(_bots)
+
+createBullOB() =>
+    float top = high[1]
+    float bot = low[1]
+    box b = box.new(bar_index - 1, top, bar_index + obExtendBars, bot, bgcolor=color.new(color.green, 84), border_color=color.new(color.green, 10))
+    array.unshift(bullZones, b)
+    array.unshift(bullTop, top)
+    array.unshift(bullBot, bot)
+
+createBearOB() =>
+    float top = high[1]
+    float bot = low[1]
+    box b = box.new(bar_index - 1, top, bar_index + obExtendBars, bot, bgcolor=color.new(color.red, 84), border_color=color.new(color.red, 10))
+    array.unshift(bearZones, b)
+    array.unshift(bearTop, top)
+    array.unshift(bearBot, bot)
+
+if showOB and extBullBos and bearCandle[1]
+    createBullOB()
+if showOB and extBearBos and bullCandle[1]
+    createBearOB()
+
+cleanupZones(bullZones, bullTop, bullBot, keepRecentZones)
+cleanupZones(bearZones, bearTop, bearBot, keepRecentZones)
+
+activeBullTop = array.size(bullTop) > 0 ? array.get(bullTop, 0) : na
+activeBullBot = array.size(bullBot) > 0 ? array.get(bullBot, 0) : na
+activeBearTop = array.size(bearTop) > 0 ? array.get(bearTop, 0) : na
+activeBearBot = array.size(bearBot) > 0 ? array.get(bearBot, 0) : na
+
+//====================================================
+// BREAKERS
+//====================================================
+var float bullBreakerTop = na
+var float bullBreakerBot = na
+var float bearBreakerTop = na
+var float bearBreakerBot = na
+
+if not na(activeBullBot) and close < activeBullBot
+    bearBreakerTop := activeBullTop
+    bearBreakerBot := activeBullBot
+    if showBreaker
+        box.new(bar_index, bearBreakerTop, bar_index + obExtendBars, bearBreakerBot, bgcolor=color.new(color.maroon, 80), border_color=color.new(color.maroon, 10))
+
+if not na(activeBearTop) and close > activeBearTop
+    bullBreakerTop := activeBearTop
+    bullBreakerBot := activeBearBot
+    if showBreaker
+        box.new(bar_index, bullBreakerTop, bar_index + obExtendBars, bullBreakerBot, bgcolor=color.new(color.navy, 80), border_color=color.new(color.blue, 10))
+
+//====================================================
+// RETEST
+//====================================================
+tol = retestTolerance * tick
+touchZone(_top, _bot) =>
+    not na(_top) and not na(_bot) and high >= (_bot - tol) and low <= (_top + tol)
+
+bullOBRetest       = touchZone(activeBullTop, activeBullBot)
+bearOBRetest       = touchZone(activeBearTop, activeBearBot)
+bullBreakerRetest  = touchZone(bullBreakerTop, bullBreakerBot)
+bearBreakerRetest  = touchZone(bearBreakerTop, bearBreakerBot)
+
+//====================================================
+// FVG WITH AUTO CLEAN
+//====================================================
+var box[] bullFvgBoxes = array.new_box()
+var float[] bullFvgTop = array.new_float()
+var float[] bullFvgBot = array.new_float()
+
+var box[] bearFvgBoxes = array.new_box()
+var float[] bearFvgTop = array.new_float()
+var float[] bearFvgBot = array.new_float()
+
+bullFVG = low > high[2]
+bearFVG = high < low[2]
+
+if bullFVG
+    float top = low
+    float bot = high[2]
+    if showFVG
+        box b = box.new(bar_index - 2, top, bar_index + fvgExtendBars, bot, bgcolor=color.new(color.lime, 86), border_color=color.new(color.green, 20))
+        array.unshift(bullFvgBoxes, b)
+        array.unshift(bullFvgTop, top)
+        array.unshift(bullFvgBot, bot)
+
+if bearFVG
+    float top = low[2]
+    float bot = high
+    if showFVG
+        box b = box.new(bar_index - 2, top, bar_index + fvgExtendBars, bot, bgcolor=color.new(color.red, 86), border_color=color.new(color.red, 20))
+        array.unshift(bearFvgBoxes, b)
+        array.unshift(bearFvgTop, top)
+        array.unshift(bearFvgBot, bot)
+
+// delete mitigated FVG
+if deleteMitigated
+    int i = array.size(bullFvgBoxes) - 1
+    while i >= 0
+        float t = array.get(bullFvgTop, i)
+        float b = array.get(bullFvgBot, i)
+        bool mitigated = low <= b
+        if mitigated
+            box.delete(array.get(bullFvgBoxes, i))
+            array.remove(bullFvgBoxes, i)
+            array.remove(bullFvgTop, i)
+            array.remove(bullFvgBot, i)
+        i -= 1
+
+    int j = array.size(bearFvgBoxes) - 1
+    while j >= 0
+        float t2 = array.get(bearFvgTop, j)
+        float b2 = array.get(bearFvgBot, j)
+        bool mitigated2 = high >= t2
+        if mitigated2
+            box.delete(array.get(bearFvgBoxes, j))
+            array.remove(bearFvgBoxes, j)
+            array.remove(bearFvgTop, j)
+            array.remove(bearFvgBot, j)
+        j -= 1
+
+lastBullFVGTop = array.size(bullFvgTop) > 0 ? array.get(bullFvgTop, 0) : na
+lastBullFVGBot = array.size(bullFvgBot) > 0 ? array.get(bullFvgBot, 0) : na
+lastBearFVGTop = array.size(bearFvgTop) > 0 ? array.get(bearFvgTop, 0) : na
+lastBearFVGBot = array.size(bearFvgBot) > 0 ? array.get(bearFvgBot, 0) : na
+
+touchBullFVG = not na(lastBullFVGTop) and high >= lastBullFVGBot and low <= lastBullFVGTop
+touchBearFVG = not na(lastBearFVGTop) and high >= lastBearFVGBot and low <= lastBearFVGTop
+
+//====================================================
+// HTF BIAS
+//====================================================
+f_getBias(tf) =>
+    h = request.security(syminfo.tickerid, tf, ta.highest(high, 40))
+    l = request.security(syminfo.tickerid, tf, ta.lowest(low, 40))
+    c = request.security(syminfo.tickerid, tf, close)
+    eq = (h + l) / 2.0
+    c > eq ? 1 : c < eq ? -1 : 0
+
+biasH4  = f_getBias("240")
+biasH1  = f_getBias("60")
+biasM15 = f_getBias("15")
+biasM5  = f_getBias("5")
+
+htfBullBias = biasH4 == 1 and biasH1 == 1
+htfBearBias = biasH4 == -1 and biasH1 == -1
+ltfBullTrig = biasM15 == 1 or biasM5 == 1
+ltfBearTrig = biasM15 == -1 or biasM5 == -1
+
+//====================================================
+// SCORE /10
+//====================================================
+bullScore = 0
+bearScore = 0
+
+bullScore += htfBullBias ? 2 : 0
+bearScore += htfBearBias ? 2 : 0
+
+bullScore += (intBias == 1 or intBullChoch) ? 1 : 0
+bearScore += (intBias == -1 or intBearChoch) ? 1 : 0
+
+bullScore += inDiscountZone ? 2 : 0
+bearScore += inPremiumZone ? 2 : 0
+
+bullScore += (bullOBRetest or bullBreakerRetest) ? 2 : 0
+bearScore += (bearOBRetest or bearBreakerRetest) ? 2 : 0
+
+bullScore += ((not useFVGFilter) or touchBullFVG) ? 1 : 0
+bearScore += ((not useFVGFilter) or touchBearFVG) ? 1 : 0
+
+bullScore += ((not useRSI) or rsi >= rsiBullMin) ? 1 : 0
+bearScore += ((not useRSI) or rsi <= rsiBearMax) ? 1 : 0
+
+bullScore += (sessionOk and ltfBullTrig) ? 1 : 0
+bearScore += (sessionOk and ltfBearTrig) ? 1 : 0
+
+bullScore += (sweepAsiaLow ? 1 : 0)
+bearScore += (sweepAsiaHigh ? 1 : 0)
+
+bullScore += ((not useDisplacementFilter) or isBullDisplacement ? 1 : 0)
+bearScore += ((not useDisplacementFilter) or isBearDisplacement ? 1 : 0)
+
+bullScore := math.min(bullScore, 10)
+bearScore := math.min(bearScore, 10)
+
+//====================================================
+// FINAL SIGNALS
+//====================================================
+buyRetestOk  = requireRetest ? (bullOBRetest or bullBreakerRetest) : true
+sellRetestOk = requireRetest ? (bearOBRetest or bearBreakerRetest) : true
+
+buySignal =
+     sessionOk and
+     htfBullBias and
+     (intBias == 1 or intBullChoch) and
+     inDiscountZone and
+     buyRetestOk and
+     ((not useFVGFilter) or touchBullFVG) and
+     ((not useRSI) or rsi >= rsiBullMin) and
+     ltfBullTrig and
+     ((not useDisplacementFilter) or isBullDisplacement) and
+     confirmBull and
+     bullScore >= minScoreToAlert
+
+sellSignal =
+     sessionOk and
+     htfBearBias and
+     (intBias == -1 or intBearChoch) and
+     inPremiumZone and
+     sellRetestOk and
+     ((not useFVGFilter) or touchBearFVG) and
+     ((not useRSI) or rsi <= rsiBearMax) and
+     ltfBearTrig and
+     ((not useDisplacementFilter) or isBearDisplacement) and
+     confirmBear and
+     bearScore >= minScoreToAlert
+
+directionText =
+     buySignal and bullScore >= 8 ? "STRONG BUY" :
+     sellSignal and bearScore >= 8 ? "STRONG SELL" :
+     buySignal ? "BUY" :
+     sellSignal ? "SELL" : "WAIT"
+
+//====================================================
+// TRADE / TRAILING
+//====================================================
+var line entryLine = na
+var line slLine = na
+var line tp1Line = na
+var line tp2Line = na
+var line trailLine = na
+var label signalLabel = na
+
+var float liveEntry = na
+var float liveSL = na
+var float liveTP1 = na
+var float liveTP2 = na
+var float liveTrail = na
+var int liveDir = 0
+var bool tp1Hit = false
+
+entryBuy = close
+slBuy = math.min(low, nz(activeBullBot, low), nz(bullBreakerBot, low)) - atr * slAtrMult
+riskBuy = entryBuy - slBuy
+tp1Buy = entryBuy + riskBuy * tp1RR
+tp2Buy = entryBuy + riskBuy * tp2RR
+
+entrySell = close
+slSell = math.max(high, nz(activeBearTop, high), nz(bearBreakerTop, high)) + atr * slAtrMult
+riskSell = slSell - entrySell
+tp1Sell = entrySell - riskSell * tp1RR
+tp2Sell = entrySell - riskSell * tp2RR
+
+if buySignal
+    liveEntry := entryBuy
+    liveSL := slBuy
+    liveTP1 := tp1Buy
+    liveTP2 := tp2Buy
+    liveTrail := slBuy
+    liveDir := 1
+    tp1Hit := false
+
+if sellSignal
+    liveEntry := entrySell
+    liveSL := slSell
+    liveTP1 := tp1Sell
+    liveTP2 := tp2Sell
+    liveTrail := slSell
+    liveDir := -1
+    tp1Hit := false
+
+if liveDir == 1 and not tp1Hit and high >= liveTP1
+    tp1Hit := true
+
+if liveDir == -1 and not tp1Hit and low <= liveTP1
+    tp1Hit := true
+
+if useTrailing and liveDir == 1
+    bool trailAllowed = trailAfterTP1 ? tp1Hit : true
+    if trailAllowed
+        float candidate = close - atr * trailAtrMult
+        liveTrail := na(liveTrail) ? candidate : math.max(liveTrail, candidate)
+
+if useTrailing and liveDir == -1
+    bool trailAllowed = trailAfterTP1 ? tp1Hit : true
+    if trailAllowed
+        float candidate = close + atr * trailAtrMult
+        liveTrail := na(liveTrail) ? candidate : math.min(liveTrail, candidate)
+
+if showTradeLevels and (buySignal or sellSignal or liveDir != 0)
+    line.delete(entryLine)
+    line.delete(slLine)
+    line.delete(tp1Line)
+    line.delete(tp2Line)
+    line.delete(trailLine)
+    label.delete(signalLabel)
+
+    if liveDir == 1
+        entryLine := line.new(bar_index, liveEntry, bar_index + 20, liveEntry, color=color.white, width=2)
+        slLine    := line.new(bar_index, liveSL, bar_index + 20, liveSL, color=color.red, width=2)
+        tp1Line   := line.new(bar_index, liveTP1, bar_index + 20, liveTP1, color=color.lime, width=2)
+        tp2Line   := line.new(bar_index, liveTP2, bar_index + 20, liveTP2, color=color.green, width=2)
+        trailLine := line.new(bar_index, liveTrail, bar_index + 20, liveTrail, color=color.yellow, width=2)
+        signalLabel := label.new(bar_index, low, directionText + "\nScore: " + str.tostring(bullScore) + "/10", style=label.style_label_up, color=color.lime, textcolor=color.black)
+
+    if liveDir == -1
+        entryLine := line.new(bar_index, liveEntry, bar_index + 20, liveEntry, color=color.white, width=2)
+        slLine    := line.new(bar_index, liveSL, bar_index + 20, liveSL, color=color.red, width=2)
+        tp1Line   := line.new(bar_index, liveTP1, bar_index + 20, liveTP1, color=color.lime, width=2)
+        tp2Line   := line.new(bar_index, liveTP2, bar_index + 20, liveTP2, color=color.green, width=2)
+        trailLine := line.new(bar_index, liveTrail, bar_index + 20, liveTrail, color=color.yellow, width=2)
+        signalLabel := label.new(bar_index, high, directionText + "\nScore: " + str.tostring(bearScore) + "/10", style=label.style_label_down, color=color.red, textcolor=color.white)
+
+//====================================================
+// VISUAL SIGNALS
+//====================================================
+plotshape(buySignal, title="BUY", style=shape.labelup, location=location.belowbar, color=color.lime, text=directionText, textcolor=color.black)
+plotshape(sellSignal, title="SELL", style=shape.labeldown, location=location.abovebar, color=color.red, text=directionText, textcolor=color.white)
+bgcolor(sessionOk ? color.new(color.blue, 93) : na)
+
+//====================================================
+// ALERTS
+//====================================================
+alertcondition(buySignal, "V3.2 BUY", "V3.2 SNIPER BUY | {{ticker}} | TF {{interval}}")
+alertcondition(sellSignal, "V3.2 SELL", "V3.2 SNIPER SELL | {{ticker}} | TF {{interval}}")
+alertcondition(buySignal or sellSignal, "V3.2 Direction", "V3.2 direction detected")
+
+if enableRealtimeAlert and barstate.isconfirmed
+    if buySignal
+        alert("🚀 V3.2 " + directionText + " | " + syminfo.ticker + " | TF " + timeframe.period + " | Mode " + mode + " | Score " + str.tostring(bullScore) + "/10", alert.freq_once_per_bar_close)
+    if sellSignal
+        alert("🔥 V3.2 " + directionText + " | " + syminfo.ticker + " | TF " + timeframe.period + " | Mode " + mode + " | Score " + str.tostring(bearScore) + "/10", alert.freq_once_per_bar_close)
+
+//====================================================
+// DASHBOARD
+//====================================================
+var table dash = table.new(position.top_right, 2, 15, border_width=1)
+
+biasToText(v) =>
+    v == 1 ? "BULL" : v == -1 ? "BEAR" : "NEUTRAL"
+
+biasToBg(v) =>
+    v == 1 ? color.new(color.green, 45) : v == -1 ? color.new(color.red, 45) : color.new(color.gray, 60)
+
+f_getBias(tf) =>
+    h = request.security(syminfo.tickerid, tf, ta.highest(high, 40))
+    l = request.security(syminfo.tickerid, tf, ta.lowest(low, 40))
+    c = request.security(syminfo.tickerid, tf, close)
+    eq = (h + l) / 2.0
+    c > eq ? 1 : c < eq ? -1 : 0
+
+biasH4  := f_getBias("240")
+biasH1  := f_getBias("60")
+biasM15 := f_getBias("15")
+biasM5  := f_getBias("5")
+
+if barstate.islast and showDashboard
+    table.cell(dash, 0, 0, "Mode", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 0, mode, text_color=color.white, bgcolor=color.new(color.blue, 45))
+
+    table.cell(dash, 0, 1, "H4", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 1, biasToText(biasH4), text_color=color.white, bgcolor=biasToBg(biasH4))
+
+    table.cell(dash, 0, 2, "H1", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 2, biasToText(biasH1), text_color=color.white, bgcolor=biasToBg(biasH1))
+
+    table.cell(dash, 0, 3, "M15", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 3, biasToText(biasM15), text_color=color.white, bgcolor=biasToBg(biasM15))
+
+    table.cell(dash, 0, 4, "M5", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 4, biasToText(biasM5), text_color=color.white, bgcolor=biasToBg(biasM5))
+
+    table.cell(dash, 0, 5, "Ext", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 5, biasToText(extBias), text_color=color.white, bgcolor=biasToBg(extBias))
+
+    table.cell(dash, 0, 6, "Int", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 6, biasToText(intBias), text_color=color.white, bgcolor=biasToBg(intBias))
+
+    table.cell(dash, 0, 7, "Zone", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 7, inDiscountZone ? "DISCOUNT" : inPremiumZone ? "PREMIUM" : "MID", text_color=color.white, bgcolor=inDiscountZone ? color.new(color.aqua, 45) : inPremiumZone ? color.new(color.orange, 45) : color.new(color.gray, 60))
+
+    table.cell(dash, 0, 8, "Asia", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 8, sweepAsiaLow ? "SWEEP LOW" : sweepAsiaHigh ? "SWEEP HIGH" : "NONE", text_color=color.white, bgcolor=sweepAsiaLow ? color.new(color.teal, 40) : sweepAsiaHigh ? color.new(color.fuchsia, 40) : color.new(color.gray, 60))
+
+    table.cell(dash, 0, 9, "Disp", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 9, isBullDisplacement ? "BULL" : isBearDisplacement ? "BEAR" : "NO", text_color=color.white, bgcolor=isBullDisplacement ? color.new(color.green, 45) : isBearDisplacement ? color.new(color.red, 45) : color.new(color.gray, 60))
+
+    table.cell(dash, 0, 10, "Bull", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 10, str.tostring(bullScore) + "/10", text_color=color.white, bgcolor=color.new(color.green, 55))
+
+    table.cell(dash, 0, 11, "Bear", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 11, str.tostring(bearScore) + "/10", text_color=color.white, bgcolor=color.new(color.red, 55))
+
+    table.cell(dash, 0, 12, "Trail", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 12, liveDir == 1 or liveDir == -1 ? str.tostring(liveTrail, format.mintick) : "NA", text_color=color.white, bgcolor=color.new(color.yellow, 60))
+
+    table.cell(dash, 0, 13, "Session", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 13, sessionOk ? "NY ON" : "OFF", text_color=color.white, bgcolor=sessionOk ? color.new(color.green, 45) : color.new(color.red, 45))
+
+    table.cell(dash, 0, 14, "Dir", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 14, directionText, text_color=color.white, bgcolor=buySignal ? color.new(color.lime, 20) : sellSignal ? color.new(color.red, 20) : color.new(color.gray, 60))

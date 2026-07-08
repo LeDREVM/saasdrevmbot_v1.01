@@ -65,6 +65,12 @@ def get_signals():
     return {"signals": engine.recent_signals()}
 
 
+@app.get("/api/scan")
+def get_scan():
+    """Confluence courante par symbole (Wyckoff + FVG + Ichimoku), lecture seule."""
+    return {"scan": engine.scan_setups()}
+
+
 @app.get("/api/logs")
 def get_logs(after: int = -1):
     return {"logs": engine.recent_logs(after)}
