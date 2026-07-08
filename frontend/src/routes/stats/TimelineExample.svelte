@@ -6,7 +6,8 @@
   let events = [];
   let loading = true;
   
-  const API_URL = 'http://localhost:8000/api';
+  import { API_URL as API_BASE } from '$lib/config.js';
+  const API_URL = `${API_BASE}/api`;
   
   // Données d'exemple pour la démo
   const mockEvents = [

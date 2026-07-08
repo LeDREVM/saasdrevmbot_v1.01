@@ -36,7 +36,7 @@
   }
 
   async function fetchStats() {
-    const res = await fetch(`${API_ENDPOINTS.scoring.replace('/n8n/scoring', '/scoring/stats')}`);
+    const res = await fetch(API_ENDPOINTS.scoringStats);
     if (res.ok) stats = await res.json();
   }
 
@@ -57,7 +57,7 @@
     analyzing = true;
     analyzeError = '';
     try {
-      const url = API_ENDPOINTS.scoring.replace('/n8n/scoring', '/scoring/analyze');
+      const url = API_ENDPOINTS.scoringAnalyze;
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
