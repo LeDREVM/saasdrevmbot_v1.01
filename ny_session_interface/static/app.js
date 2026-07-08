@@ -154,6 +154,80 @@ function renderSignals(list) {
   }).join("");
 }
 
+// ── Scan des setups (Wyckoff · FVG · Ichimoku) ──────────────────────────────--
+const PILLARS = [
+  { key: "wyckoff", label: "Wyckoff" },
+  { key: "fvg", label: "FVG" },
+  { key: "ichimoku", label: "Ichimoku" },
+];
+const EXTRA_CONF = [
+  { key: "fvg_mitigation", label: "Mitig. FVG" },
+  { key: "divergence", label: "Diverg. RSI" },
+  { key: "bias", label: "Biais H4" },
+];
+
+function gradeClass(g) {
+  return g === "A+" ? "grade-Aplus" : g === "A" ? "grade-A" : g === "B" ? "grade-B" : "grade-C";
+}
+
+function renderScan(list) {
+  const box = $("scan");
+  if (!list || !list.length) { box.innerHTML = '<div class="empty-feed">En attente du moteur…</div>'; return; }
+  box.innerHTML = list.map((r) => {
+    if (!r.available) {
+      return `<div class="scan-card scan-na">
+        <div class="scan-head"><b>${r.symbol}</b><span class="badge badge-warn">données indispo</span></div>
+        <div class="sig-meta">Pas de données de marché pour ce symbole.</div>
+      </div>`;
+    }
+    const c = r.confluence || {};
+    const w = r.weights || {};
+    const up = r.direction === "up";
+    const dirCls = up ? "dir-buy" : r.direction === "down" ? "dir-sell" : "";
+    const dirTxt = up ? "▲ BUY" : r.direction === "down" ? "▼ SELL" : "—";
+    const pct = Math.round((r.confluence_points / r.confluence_max) * 100);
+
+    const pillars = PILLARS.map((p) => {
+      const ok = !!c[p.key];
+      return `<span class="pill-conf ${ok ? "on" : "off"}" title="${w[p.key] || 0} pts">
+        ${ok ? "✓" : "✗"} ${p.label}</span>`;
+    }).join("");
+
+    const extras = EXTRA_CONF.map((p) => {
+      const ok = !!c[p.key];
+      return `<span class="chip ${ok ? "chip-on" : ""}">${p.label}</span>`;
+    }).join("");
+
+    const ctx = r.context || {};
+    const fvg = r.fvg || {};
+    const fvgTxt = fvg.direction
+      ? `${fvg.direction === "BULLISH" ? "haussier" : "baissier"} [${fmt(fvg.bottom, 2)}–${fmt(fvg.top, 2)}]${fvg.price_in_gap ? " · mitigation" : ""}`
+      : "aucun";
+
+    return `<div class="scan-card ${r.pillars_aligned ? "aligned" : ""}">
+      <div class="scan-head">
+        <b class="${dirCls}">${r.symbol}</b>
+        <span class="${dirCls} scan-dir">${dirTxt}</span>
+        <span class="grade ${gradeClass(r.grade)}">${r.grade}</span>
+      </div>
+      <div class="scan-score">
+        <div class="bar"><div class="bar-fill" style="width:${pct}%;background:${pct >= 82 ? "var(--green)" : pct >= 55 ? "var(--amber)" : "var(--muted,#8b949e)"}"></div></div>
+        <span class="scan-pts">${r.confluence_points}/${r.confluence_max}</span>
+      </div>
+      <div class="scan-pillars">${pillars}</div>
+      <div class="scan-chips">${extras}</div>
+      <div class="sig-meta">
+        prix ${fmt(r.last_price, 2)} · ${ctx.price_above_kijun ? "prix > Kijun" : "prix < Kijun"} ·
+        H4 ${ctx.h4_phase} · FVG ${fvgTxt}
+      </div>
+      <div class="scan-verdict ${r.passes_profile ? "ok" : "wait"}">
+        ${r.passes_profile ? "✅ passe le profil (entrée possible)" : r.is_valid ? "⚠️ valide mais grade < profil" : "⏳ pas de smart signal"}
+      </div>
+    </div>`;
+  }).join("");
+  $("scan-updated").textContent = new Date().toLocaleTimeString("fr-FR");
+}
+
 // ── Stats P&L + courbe d'équité ────────────────────────────────────────────--
 function setSigned(id, v, cur) {
   const el = $(id);
@@ -317,6 +391,16 @@ function wire() {
   $("btn-clearlog").onclick = () => { $("logs").innerHTML = ""; };
 }
 
+// ── Scan (plus lent : 3 timeframes × symboles à chaque appel) ────────────────
+async function scanPoll() {
+  try {
+    const r = await api("/api/scan");
+    renderScan(r.scan);
+  } catch (e) { /* l'indicateur de connexion est géré par poll() */ }
+}
+
 wire();
 poll();
+scanPoll();
 setInterval(poll, 2000);
+setInterval(scanPoll, 5000);
