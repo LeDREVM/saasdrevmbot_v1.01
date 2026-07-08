@@ -342,6 +342,82 @@ def price_above_kijun(df: pd.DataFrame, period: int = 26) -> bool:
     return float(df["close"].iloc[-1]) > float(kijun.iloc[-1])
 
 
+def detect_fvg(df: pd.DataFrame, scan: int = 20) -> dict:
+    """
+    Fair Value Gap (imbalance 3 bougies) façon `ICT_RSI_Wyckoff.pine` :
+      • FVG haussier : low[i]  > high[i-2]  (vide au-dessus de la bougie i-2)
+      • FVG baissier : high[i] < low[i-2]   (vide en dessous de la bougie i-2)
+
+    Renvoie le FVG le plus récent encore « frais » (non comblé par une clôture
+    ultérieure). `price_in_gap` = le prix est revenu tester le gap (mitigation).
+    """
+    if df is None or len(df) < 3:
+        return {"direction": None, "top": None, "bottom": None,
+                "bars_ago": None, "price_in_gap": False, "fresh": False}
+    highs = df["high"].to_numpy(dtype=float)
+    lows = df["low"].to_numpy(dtype=float)
+    closes = df["close"].to_numpy(dtype=float)
+    n = len(df)
+    last_close = float(closes[-1])
+    stop = max(2, n - scan)
+    for i in range(n - 1, stop - 1, -1):
+        if lows[i] > highs[i - 2]:                       # haussier
+            top, bottom = float(lows[i]), float(highs[i - 2])
+            fresh = not any(closes[j] < bottom for j in range(i + 1, n))
+            if fresh:
+                return {"direction": "BULLISH", "top": round(top, 5),
+                        "bottom": round(bottom, 5), "bars_ago": (n - 1) - i,
+                        "price_in_gap": bottom <= last_close <= top, "fresh": True}
+        if highs[i] < lows[i - 2]:                        # baissier
+            top, bottom = float(lows[i - 2]), float(highs[i])
+            fresh = not any(closes[j] > top for j in range(i + 1, n))
+            if fresh:
+                return {"direction": "BEARISH", "top": round(top, 5),
+                        "bottom": round(bottom, 5), "bars_ago": (n - 1) - i,
+                        "price_in_gap": bottom <= last_close <= top, "fresh": True}
+    return {"direction": None, "top": None, "bottom": None,
+            "bars_ago": None, "price_in_gap": False, "fresh": False}
+
+
+# Barème de confluence du scan (les 3 piliers Wyckoff/FVG/Ichimoku pèsent le plus).
+CONFLUENCE_WEIGHTS = {
+    "wyckoff": 3, "fvg": 3, "ichimoku": 2,
+    "fvg_mitigation": 1, "divergence": 1, "bias": 1,
+}
+CONFLUENCE_MAX = sum(CONFLUENCE_WEIGHTS.values())   # 11
+
+
+def score_confluence(ctx, fvg: dict, direction: str | None) -> dict:
+    """
+    Note la confluence Wyckoff + FVG + Ichimoku (+ divergence, biais, mitigation)
+    dans le sens `direction` ("up"/"down"). Lecture seule : sert au panneau de
+    scan, sans toucher à la décision de trade (`classify_setup`).
+    """
+    # Direction candidate si le smart signal n'a rien tranché.
+    if direction not in ("up", "down"):
+        if ctx.wyckoff == "SPRING" or fvg.get("direction") == "BULLISH":
+            direction = "up"
+        elif ctx.wyckoff == "UTAD" or fvg.get("direction") == "BEARISH":
+            direction = "down"
+    want_bull = direction == "up"
+
+    items = {
+        "wyckoff": (ctx.wyckoff == "SPRING") if want_bull else (ctx.wyckoff == "UTAD"),
+        "fvg": (fvg.get("direction") == "BULLISH") if want_bull else (fvg.get("direction") == "BEARISH"),
+        "ichimoku": ctx.price_above_kijun if want_bull else (not ctx.price_above_kijun),
+        "fvg_mitigation": bool(fvg.get("price_in_gap")) and (
+            (fvg.get("direction") == "BULLISH") if want_bull else (fvg.get("direction") == "BEARISH")),
+        "divergence": (ctx.rsi_divergence == "BULLISH") if want_bull else (ctx.rsi_divergence == "BEARISH"),
+        "bias": (ctx.h4_bias == "BULLISH") if want_bull else (ctx.h4_bias == "BEARISH"),
+    }
+    points = sum(CONFLUENCE_WEIGHTS[k] for k, ok in items.items() if ok)
+    return {
+        "direction": direction, "points": points, "max": CONFLUENCE_MAX,
+        "items": items, "weights": CONFLUENCE_WEIGHTS,
+        "pillars_aligned": items["wyckoff"] and items["fvg"] and items["ichimoku"],
+    }
+
+
 def get_rates(symbol: str, timeframe: int, n: int) -> pd.DataFrame | None:
     rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, n)
     if rates is None or len(rates) == 0:
@@ -922,6 +998,56 @@ class BotEngine:
 
     def recent_signals(self):
         return list(self.signals)
+
+    def scan_setups(self) -> list[dict]:
+        """
+        Photographie LECTURE SEULE de la confluence courante par symbole :
+        Wyckoff + FVG + Ichimoku (+ divergence, biais) et grade `classify_setup`.
+        N'ouvre aucun trade — sert au panneau « Scan des setups » de l'UI.
+        """
+        profile = self.profile
+        min_rank = _GRADE_RANK[profile["min_grade"]]
+        out: list[dict] = []
+        for name, cfg in SYMBOLS.items():
+            try:
+                with self._mt5_lock:
+                    ctx, df_m5, _atr = build_context(cfg)
+                if ctx is None:
+                    out.append({"symbol": name, "available": False})
+                    continue
+                setup = classify_setup(ctx, rr_ratio=profile["rr_target"])
+                fvg = detect_fvg(df_m5)
+                conf = score_confluence(ctx, fvg, setup.direction)
+                grade = setup.grade.value
+                out.append({
+                    "symbol": name,
+                    "available": True,
+                    "last_price": round(float(df_m5["close"].iloc[-1]), 5) if df_m5 is not None else None,
+                    "direction": conf["direction"],
+                    "grade": grade,
+                    "is_valid": bool(setup.is_valid),
+                    "passes_profile": bool(setup.is_valid and _GRADE_RANK[grade] >= min_rank),
+                    "setup_type": setup.setup_type.value,
+                    "pillars_aligned": conf["pillars_aligned"],
+                    "confluence_points": conf["points"],
+                    "confluence_max": conf["max"],
+                    "confluence": conf["items"],
+                    "weights": conf["weights"],
+                    "context": {
+                        "wyckoff": ctx.wyckoff,
+                        "rsi_divergence": ctx.rsi_divergence,
+                        "price_above_kijun": bool(ctx.price_above_kijun),
+                        "h4_bias": ctx.h4_bias,
+                        "h4_phase": ctx.h4_phase.value,
+                        "m15_zone_touched": bool(ctx.m15_zone_touched),
+                        "m5_trigger": ctx.m5_trigger,
+                    },
+                    "fvg": fvg,
+                })
+            except Exception as e:  # noqa: BLE001
+                log.exception("[%s] Erreur scan_setups : %s", name, e)
+                out.append({"symbol": name, "available": False})
+        return out
 
 
 # Singleton partagé par l'API

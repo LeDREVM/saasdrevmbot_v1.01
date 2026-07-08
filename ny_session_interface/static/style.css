@@ -182,3 +182,53 @@ select, #inp-token {
 .logline .t { color: var(--muted); margin-right: 6px; }
 
 footer { text-align: center; color: var(--muted); font-size: 12px; padding: 16px; border-top: 1px solid var(--border); margin-top: 8px; }
+
+/* ── Scan des setups (Wyckoff · FVG · Ichimoku) ─────────────────────────────── */
+.grade-C { color: var(--muted); }
+h2 .subtle { font-size: 11px; font-weight: 400; color: var(--muted); text-transform: none; letter-spacing: .3px; margin-left: 6px; }
+
+.scan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+.scan-card {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 8px;
+  padding: 11px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.scan-card.aligned { border-left-color: var(--green); box-shadow: 0 0 0 1px rgba(46,160,67,.18); }
+.scan-card.scan-na { opacity: .7; }
+
+.scan-head { display: flex; align-items: center; gap: 8px; }
+.scan-head b { font-size: 15px; }
+.scan-head .scan-dir { font-size: 12px; }
+.scan-head .grade { margin-left: auto; font-weight: 700; font-size: 15px; }
+
+.scan-score { display: flex; align-items: center; gap: 8px; }
+.scan-score .bar { flex: 1; }
+.scan-pts { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--muted); min-width: 38px; text-align: right; }
+
+.scan-pillars { display: flex; gap: 6px; flex-wrap: wrap; }
+.pill-conf {
+  font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 6px;
+  border: 1px solid var(--border);
+}
+.pill-conf.on { color: #fff; background: var(--green-dim); border-color: var(--green); }
+.pill-conf.off { color: var(--muted); background: transparent; }
+
+.scan-chips { display: flex; gap: 5px; flex-wrap: wrap; }
+.chip {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .3px;
+  padding: 2px 7px; border-radius: 10px; border: 1px solid var(--border); color: var(--muted);
+}
+.chip.chip-on { color: var(--txt); border-color: var(--blue); background: rgba(47,129,247,.14); }
+
+.scan-verdict { font-size: 11px; font-weight: 600; }
+.scan-verdict.ok { color: var(--green); }
+.scan-verdict.wait { color: var(--muted); }
