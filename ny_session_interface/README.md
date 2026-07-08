@@ -13,6 +13,7 @@ ny_session_interface/
 ├── ny_session_bot.py      # Moteur pilotable (boucle de trading en thread)
 ├── sim_mt5.py             # Simulateur MT5 (mode démo, sans terminal)
 ├── trading_ny_session.py  # ⚠️ PLACEHOLDER — remplace par ta vraie Trading Bible
+├── backtest_xbrusd.py     # Algo automatique (backtest) Wyckoff+FVG+Ichimoku, compte départ 100
 ├── requirements.txt
 └── static/                # UI (index.html + app.js + style.css)
 ```
@@ -102,6 +103,7 @@ Ce serveur peut envoyer des **ordres réels** (quand DRY RUN est OFF).
 | GET  | `/api/state` | snapshot complet (statut, compte, profil, DD…) |
 | GET  | `/api/positions` | positions ouvertes + PnL |
 | GET  | `/api/signals` | derniers signaux / entrées de journal |
+| GET  | `/api/scan` | confluence courante par symbole (Wyckoff · FVG · Ichimoku), lecture seule |
 | GET  | `/api/logs?after=<i>` | logs incrémentaux |
 | POST | `/api/control/start` · `/stop` | démarre / arrête le moteur |
 | POST | `/api/control/dry-run` `{enabled}` | bascule DRY RUN |
@@ -111,3 +113,31 @@ Ce serveur peut envoyer des **ordres réels** (quand DRY RUN est OFF).
 | POST | `/api/control/close/{ticket}` | ferme une position |
 
 Les routes `POST` exigent l'en-tête `X-Api-Token` si `API_TOKEN` est défini.
+
+## Backtest — algo automatique (compte départ 100)
+
+`backtest_xbrusd.py` simule l'algo Wyckoff + FVG + Ichimoku sur **XBR/USD (Brent)**
+en partant d'un capital de **100**. Il réutilise **les mêmes détecteurs** que le
+moteur live (`detect_wyckoff`, `detect_fvg`, filtre Kijun, divergence RSI,
+`score_confluence`), donc il teste la vraie stratégie.
+
+**Règle d'entrée** (une position à la fois, flat → flat) :
+
+1. **Structure** — un FVG frais donne le sens et la zone.
+2. **Tendance** — filtre Ichimoku : Kijun alignée avec le sens du FVG.
+3. **Timing** — mitigation : le prix est revenu dans le gap.
+
+Wyckoff (Spring/UTAD), divergence et biais ajoutent des points de confluence
+(`--min-confluence`, /11). **Money-management** : `--risk` (défaut 1 %) du capital
+risqué par trade, SL en `--sl-atr` × ATR, TP en `--rr`, break-even à `--breakeven` R,
+compounding.
+
+```bash
+python backtest_xbrusd.py                          # Brent via yfinance, sinon synthétique
+python backtest_xbrusd.py --interval 1h --period 6mo
+python backtest_xbrusd.py --risk 0.01 --rr 2.0 --min-confluence 6
+```
+
+Sans réseau, une série **synthétique déterministe** (régimes trend/range) permet de
+tourner hors-ligne. ⚠️ Résultats sur données synthétiques = démonstration mécanique
+(pas d'edge réel) ; lance sur données Brent réelles pour évaluer la performance.
