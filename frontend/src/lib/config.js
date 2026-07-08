@@ -3,8 +3,16 @@
  * Gère les variables d'environnement et les configurations par défaut
  */
 
-// URL de l'API backend
-export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// URL de l'API backend (FastAPI).
+// 3 modes selon VITE_API_URL :
+//   - non défini (dev local)        → 'http://localhost:8000' (appel direct FastAPI)
+//   - '' (chaîne vide, prod Netlify) → chemins RELATIFS '/api/...' captés par le
+//                                       reverse-proxy Netlify (voir netlify.toml)
+//   - 'https://api.domaine.com'      → appel absolu (mode CORS)
+// On teste `=== undefined` (et non `||`) pour que '' reste relatif au lieu de
+// retomber sur localhost.
+const _viteApiUrl = import.meta.env.VITE_API_URL;
+export const API_URL = _viteApiUrl === undefined ? 'http://localhost:8000' : _viteApiUrl;
 
 // Mode de l'application
 export const MODE = import.meta.env.MODE || 'development';
