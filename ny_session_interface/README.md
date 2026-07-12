@@ -28,9 +28,15 @@ interroge l'API toutes les 2 s (REST polling).
 ```bash
 cd ny_session_interface
 pip install -r requirements.txt
+cp env.template .env        # puis renseigner les variables (Telegram, token, etc.)
 python api.py
 # → http://127.0.0.1:8800
 ```
+
+Les variables d'environnement (Telegram, `API_TOKEN`, `BACKEND_URL`,
+`ALLOW_EXECUTION`, MT5…) sont documentées dans **`env.template`**. Le vrai `.env`
+n'est jamais committé. Les credentials backend (`ANTHROPIC_API_KEY`) sont dans
+`backend/env.template`, ceux de n8n dans `n8n/workflows/README.md`.
 
 Sans le paquet `MetaTrader5`, le moteur bascule automatiquement en **SIMULATION**
 (faux marché) : tu peux exercer toute l'interface (démarrer, voir des positions
