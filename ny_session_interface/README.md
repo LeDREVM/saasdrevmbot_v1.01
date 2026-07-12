@@ -14,6 +14,7 @@ ny_session_interface/
 ├── sim_mt5.py             # Simulateur MT5 (mode démo, sans terminal)
 ├── trading_ny_session.py  # ⚠️ PLACEHOLDER — remplace par ta vraie Trading Bible
 ├── backtest_xbrusd.py     # Algo automatique (backtest) Wyckoff+FVG+Ichimoku, compte départ 100
+├── setup_validator.py     # AI SETUP VALIDATOR v1 (features → sous-scores → GLOBAL → décision)
 ├── requirements.txt
 └── static/                # UI (index.html + app.js + style.css)
 ```
@@ -165,3 +166,32 @@ python backtest_xbrusd.py --risk 0.01 --rr 2.0 --min-confluence 6
 Sans réseau, une série **synthétique déterministe** (régimes trend/range) permet de
 tourner hors-ligne. ⚠️ Résultats sur données synthétiques = démonstration mécanique
 (pas d'edge réel) ; lance sur données Brent réelles pour évaluer la performance.
+
+## AI Setup Validator (`setup_validator.py`)
+
+Maillon **AI SETUP VALIDATOR** de l'architecture cible, version **v1 déterministe
+(sans ML)** :
+
+```
+OHLC → Feature Engine (vecteur de ~25 features)
+     → sous-scores : Trend / Wyckoff / Momentum / Liquidity / Volatility / News
+     → GLOBAL SCORE = 0.30·Trend + 0.20·Wyckoff + 0.15·Momentum
+                    + 0.15·Liquidity + 0.10·Volatility + 0.10·News
+     → décision : EXECUTE (≥80) / WATCHLIST (60–79) / IGNORE (<60)
+```
+
+Le `news_score < 60` et l'absence de session sont des **hard-filters** (bloquent
+l'EXECUTE). Il réutilise les détecteurs du moteur (RSI, Ichimoku, Wyckoff, FVG, ATR).
+
+Deux usages :
+1. Score exploitable tout de suite pour le pipeline (n8n pourra le consommer).
+2. `Validation.to_training_record(result)` émet un enregistrement **features → WIN/LOSS**
+   qui alimentera plus tard le classifieur ML / la policy RL (le RL reste un chantier
+   séparé : dataset historique + entraînement + validation walk-forward avant tout
+   déploiement — jamais de remplacement auto du modèle sans validation).
+
+```bash
+python setup_validator.py           # démo XBRUSD (sortie lisible)
+python setup_validator.py --json    # vecteur de features + sous-scores en JSON
+python setup_validator.py --news 20 # simule une annonce imminente (bloque l'EXECUTE)
+```
