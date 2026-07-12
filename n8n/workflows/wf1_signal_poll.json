@@ -1,0 +1,111 @@
+{
+  "name": "DREVM · WF1 · Signal poll & features",
+  "nodes": [
+    {
+      "id": "wf1-cron",
+      "name": "⏰ Chaque minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "wf1-signal",
+      "name": "📥 GET /api/signal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.NY_BOT_URL }}/api/signal",
+        "options": {
+          "timeout": 15000
+        }
+      }
+    },
+    {
+      "id": "wf1-snapshot",
+      "name": "💾 Snapshot features",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Aplati chaque signal en une ligne exploitable (à router vers DB/TimescaleDB).\nconst res = $input.first().json;\nreturn (res.signals || []).map(s => ({ json: {\n  ts: res.generated_at, symbol: s.symbol, decision: s.decision,\n  direction: s.direction, confidence: s.confidence, scores: s.scores,\n  executable: s.executable, filters: s.filters,\n}}));"
+      }
+    },
+    {
+      "id": "wf1-store",
+      "name": "🗄️ Store (DB / TimescaleDB)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        900,
+        300
+      ],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "⏰ Chaque minute": {
+      "main": [
+        [
+          {
+            "node": "📥 GET /api/signal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📥 GET /api/signal": {
+      "main": [
+        [
+          {
+            "node": "💾 Snapshot features",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "💾 Snapshot features": {
+      "main": [
+        [
+          {
+            "node": "🗄️ Store (DB / TimescaleDB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "timezone": "Europe/Paris",
+    "saveManualExecutions": true
+  },
+  "tags": [
+    {
+      "name": "drevm"
+    }
+  ],
+  "meta": {}
+}
