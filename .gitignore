@@ -12,3 +12,7 @@ data/event_store.json
 # Python bytecode
 __pycache__/
 *.py[cod]
+
+# Bases de données locales (régénérées)
+*.sqlite
+*.db
