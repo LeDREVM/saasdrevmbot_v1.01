@@ -16,7 +16,11 @@ Lancement :
 
 from __future__ import annotations
 
+import json
 import os
+import urllib.error
+import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException
@@ -24,11 +28,17 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from ny_session_bot import engine
+import setup_validator as validator
+from ny_session_bot import engine, SYMBOLS, get_rates, mt5
 
 API_TOKEN = os.environ.get("API_TOKEN")  # facultatif : protège les commandes
 HOST = os.environ.get("NY_BOT_HOST", "127.0.0.1")
 PORT = int(os.environ.get("NY_BOT_PORT", "8800"))
+# Backend FastAPI principal (agent de scoring IA). Surchargeable par env.
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
+# Exécution d'ordres via /api/execute : DÉSACTIVÉE par défaut (garde-fou).
+ALLOW_EXECUTION = os.environ.get("ALLOW_EXECUTION", "0") == "1"
+SIGNAL_BARS = 250
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -63,6 +73,156 @@ def get_positions():
 @app.get("/api/signals")
 def get_signals():
     return {"signals": engine.recent_signals()}
+
+
+@app.get("/api/scan")
+def get_scan():
+    """Confluence courante par symbole (Wyckoff + FVG + Ichimoku), lecture seule."""
+    return {"scan": engine.scan_setups()}
+
+
+class AiScanBody(BaseModel):
+    symbol: str
+
+
+@app.post("/api/scan/ai")
+def scan_ai(body: AiScanBody, x_api_token: str | None = Header(default=None)):
+    """
+    Branche l'agent de scoring IA (backend `/api/scoring/analyze`) sur un setup
+    du scan. Récupère le contexte courant du symbole (grade, phase HTF, sens),
+    proxifie vers le backend et retourne son score /100 + recommandation.
+    """
+    _check_token(x_api_token)
+
+    entry = next((s for s in engine.scan_setups() if s.get("symbol") == body.symbol), None)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Symbole inconnu : {body.symbol}")
+    if not entry.get("available"):
+        raise HTTPException(status_code=409, detail="Pas de données de marché pour ce symbole")
+    direction = entry.get("direction")
+    if direction not in ("up", "down"):
+        raise HTTPException(status_code=422, detail="Pas de setup directionnel à analyser")
+
+    ctx = entry.get("context") or {}
+    payload = {
+        "symbol": body.symbol,
+        "setup_grade": entry.get("grade", "C"),
+        "htf_phase": ctx.get("h4_phase", "accumulation"),
+        "direction": "BUY" if direction == "up" else "SELL",
+        "session_active": bool(engine.session_open),
+        "spread_ok": True,
+        "event_context": None,
+        # Confluence réelle Wyckoff+FVG+Ichimoku pour un scoring IA mieux fondé.
+        "confluence": {
+            "points": entry.get("confluence_points"),
+            "max": entry.get("confluence_max"),
+            "pillars": entry.get("confluence"),
+            "wyckoff": ctx.get("wyckoff"),
+            "rsi_divergence": ctx.get("rsi_divergence"),
+            "price_above_kijun": ctx.get("price_above_kijun"),
+            "m15_zone_touched": ctx.get("m15_zone_touched"),
+            "m5_trigger": ctx.get("m5_trigger"),
+            "fvg": entry.get("fvg"),
+        },
+        "notify": False,
+    }
+
+    try:
+        req = urllib.request.Request(
+            f"{BACKEND_URL}/api/scoring/analyze",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=90) as resp:  # noqa: S310
+            result = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")[:300]
+        raise HTTPException(status_code=502, detail=f"Backend scoring {exc.code} : {detail}")
+    except urllib.error.URLError as exc:
+        raise HTTPException(status_code=503,
+                            detail=f"Backend IA injoignable ({BACKEND_URL}) : {exc.reason}")
+
+    return {"ok": True, "ai": result, "setup": {
+        "grade": entry.get("grade"), "direction": direction,
+        "confluence_points": entry.get("confluence_points"),
+        "confluence_max": entry.get("confluence_max"),
+    }}
+
+
+# ── Pipeline : signal (validateur + filtres) + exécution gardée ──────────────
+def _signal_for(name: str) -> dict | None:
+    """AI Setup Validator + filtres (session, news, risk/halt) pour un symbole."""
+    cfg = SYMBOLS.get(name)
+    if cfg is None:
+        return None
+    with engine._mt5_lock:
+        df = get_rates(cfg["mt5_symbol"], mt5.TIMEFRAME_M5, SIGNAL_BARS)
+    if df is None or len(df) < 60:
+        return {"symbol": name, "available": False}
+
+    v = validator.validate(df, symbol=name, session_active=bool(engine.session_open))
+    risk_ok = not engine.state.halted and not engine.kill_switch
+    filters = {
+        "session_ny": bool(engine.session_open),
+        "news_ok": float(v.features.get("news_score", 100)) >= 60,
+        "risk_ok": bool(risk_ok),
+        "confidence_ok": v.confidence >= 80,
+    }
+    return {
+        "symbol": name, "available": True,
+        "decision": v.decision, "direction": v.direction, "confidence": v.confidence,
+        "scores": v.scores, "filters": filters,
+        "executable": bool(v.decision == "EXECUTE" and risk_ok),
+    }
+
+
+@app.get("/api/signal")
+def get_signal():
+    """Signal par symbole (AI Setup Validator + filtres). Consommé par n8n."""
+    signals = [s for s in (_signal_for(n) for n in SYMBOLS) if s]
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "session_ny": bool(engine.session_open),
+        "signals": signals,
+    }
+
+
+class ExecuteBody(BaseModel):
+    symbol: str
+    direction: str | None = None   # "up"/"down" ; sinon déduit du signal
+    confirm: bool = False
+
+
+@app.post("/api/execute")
+def execute(body: ExecuteBody, x_api_token: str | None = Header(default=None)):
+    """
+    Exécution gardée d'un signal (déclenchée par n8n). Garde-fous cumulés :
+    ALLOW_EXECUTION=1 + token + confirm=true + signal courant == EXECUTE +
+    garde-fous moteur (kill/halt/position/DRY_RUN).
+    """
+    _check_token(x_api_token)
+    if not ALLOW_EXECUTION:
+        raise HTTPException(status_code=403,
+                            detail="Exécution désactivée (variable d'env ALLOW_EXECUTION=1 requise)")
+    if not body.confirm:
+        raise HTTPException(status_code=400, detail="confirm=true requis pour exécuter")
+
+    sig = _signal_for(body.symbol)
+    if sig is None:
+        raise HTTPException(status_code=404, detail=f"Symbole inconnu : {body.symbol}")
+    if not sig.get("available"):
+        raise HTTPException(status_code=409, detail="Pas de données de marché")
+    if not sig.get("executable"):
+        raise HTTPException(status_code=409,
+                            detail=f"Signal non exécutable (décision={sig['decision']}, "
+                                   f"confiance={sig['confidence']}%, filtres={sig['filters']})")
+
+    direction = body.direction or sig["direction"]
+    res = engine.execute_signal(body.symbol, direction, source="n8n")
+    if not res.get("ok"):
+        raise HTTPException(status_code=409, detail=res.get("reason", "exécution refusée"))
+    return {"ok": True, "executed": res, "signal": sig}
 
 
 @app.get("/api/logs")

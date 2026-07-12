@@ -8,3 +8,7 @@ data/price_cache/
 # État de déduplication runtime (régénéré, ne pas versionner)
 data/event_store.json
 # events_log.json est intentionnellement versionné (données historiques précieuses)
+
+# Python bytecode
+__pycache__/
+*.py[cod]

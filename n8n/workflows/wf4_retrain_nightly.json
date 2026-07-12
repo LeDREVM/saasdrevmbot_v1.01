@@ -1,0 +1,197 @@
+{
+  "name": "DREVM · WF4 · Retrain nocturne (stub RL)",
+  "nodes": [
+    {
+      "id": "wf4-cron",
+      "name": "🌙 Tous les soirs 22h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 22 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "wf4-dataset",
+      "name": "📦 Dataset Builder (STUB)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        460,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "wf4-validate",
+      "name": "🧪 Validation dataset (STUB)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "wf4-train",
+      "name": "🧠 Retrain PPO (STUB)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        860,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "wf4-backtest",
+      "name": "📈 Backtest (STUB)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1060,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "wf4-better",
+      "name": "✅ Performance meilleure ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1260,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.better }}",
+              "operation": "equal",
+              "value2": "={{ true }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "wf4-deploy",
+      "name": "🚀 Deploy (jamais auto sans validation)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1480,
+        220
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "wf4-keep",
+      "name": "🛡️ Keep Current Model",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1480,
+        400
+      ],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "🌙 Tous les soirs 22h": {
+      "main": [
+        [
+          {
+            "node": "📦 Dataset Builder (STUB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📦 Dataset Builder (STUB)": {
+      "main": [
+        [
+          {
+            "node": "🧪 Validation dataset (STUB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🧪 Validation dataset (STUB)": {
+      "main": [
+        [
+          {
+            "node": "🧠 Retrain PPO (STUB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🧠 Retrain PPO (STUB)": {
+      "main": [
+        [
+          {
+            "node": "📈 Backtest (STUB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📈 Backtest (STUB)": {
+      "main": [
+        [
+          {
+            "node": "✅ Performance meilleure ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "✅ Performance meilleure ?": {
+      "main": [
+        [
+          {
+            "node": "🚀 Deploy (jamais auto sans validation)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "🛡️ Keep Current Model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "timezone": "Europe/Paris",
+    "saveManualExecutions": true
+  },
+  "tags": [
+    {
+      "name": "drevm"
+    }
+  ],
+  "meta": {}
+}
