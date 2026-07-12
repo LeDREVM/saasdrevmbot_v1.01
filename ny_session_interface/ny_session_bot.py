@@ -662,6 +662,61 @@ class BotEngine:
                 return ok
         return False
 
+    def execute_signal(self, name: str, direction: str, source: str = "api") -> dict:
+        """
+        Exécute un signal externe (ex : orchestrateur n8n) sur un symbole.
+        LECTURE DES GARDE-FOUS : kill switch, halt (DD), une position/symbole,
+        max trades/jour, DRY_RUN (respecté par `_open_trade`). Renvoie un dict
+        {ok, reason?, order?}. N'envoie un ordre RÉEL que si DRY_RUN est OFF.
+        """
+        cfg = SYMBOLS.get(name)
+        if cfg is None:
+            return {"ok": False, "reason": f"symbole inconnu : {name}"}
+        if direction not in ("up", "down"):
+            return {"ok": False, "reason": "direction invalide (up/down)"}
+        if self.kill_switch:
+            return {"ok": False, "reason": "kill switch actif"}
+        if self.state.halted:
+            return {"ok": False, "reason": "entrées stoppées (drawdown journalier)"}
+
+        sym = cfg["mt5_symbol"]
+        profile = self.profile
+        with self._mt5_lock:
+            if ONE_POSITION_PER_SYMBOL and self._my_positions(sym):
+                return {"ok": False, "reason": "position déjà ouverte sur ce symbole"}
+            if self.state.trades.get(name, 0) >= profile["max_trades_per_symbol"]:
+                return {"ok": False, "reason": "max trades/jour atteint pour ce symbole"}
+            if not self._spread_ok(sym, cfg["max_spread_points"]):
+                return {"ok": False, "reason": "spread trop large"}
+            ctx, _df, atr_val = build_context(cfg)
+
+        if atr_val is None or not atr_val:
+            return {"ok": False, "reason": "pas de données de marché / ATR indisponible"}
+
+        res = self._open_trade(sym, direction, atr_val, cfg)
+        if not res:
+            return {"ok": False, "reason": "ordre refusé (lot=0 ou rejet broker)"}
+
+        self.state.trades[name] = self.state.trades.get(name, 0) + 1
+        signal = {
+            "ts": datetime.now(ZoneInfo("UTC")).isoformat(timespec="seconds"),
+            "symbol": name, "direction": direction, "grade": "—",
+            "setup_type": f"exec:{source}", "dry_run": res.get("dry_run", True),
+            "entry": res.get("entry"), "sl": res.get("sl"), "tp": res.get("tp"),
+            "lots": res.get("lots"), "demo": False, "journal": {"source": source},
+        }
+        self.signals.appendleft(signal)
+        log.info("🎯 EXÉCUTION %s %s (%s) | %s", name, direction.upper(), source,
+                 "DRY RUN" if res.get("dry_run") else "LIVE")
+        notify_telegram(
+            f"🎯 <b>EXÉCUTION {name}</b> ({source})\n"
+            f"{'🟢 BUY' if direction == 'up' else '🔴 SELL'} · "
+            f"{'DRY RUN' if res.get('dry_run') else 'LIVE'}\n"
+            f"entrée {res.get('entry')} | SL {res.get('sl')} | TP {res.get('tp')} | "
+            f"lots {res.get('lots')}"
+        )
+        return {"ok": True, "order": res, "dry_run": res.get("dry_run", True)}
+
     def _record_closed(self, pos, exit_px: float, reason: str):
         """Enregistre un trade fermé avec son PnL réalisé (pour les stats)."""
         try:

@@ -1,0 +1,160 @@
+{
+  "name": "DREVM · WF2 · Signal → filtres → trade",
+  "nodes": [
+    {
+      "id": "wf2-cron",
+      "name": "⏰ Chaque minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "wf2-signal",
+      "name": "📥 GET /api/signal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.NY_BOT_URL }}/api/signal",
+        "options": {
+          "timeout": 15000
+        }
+      }
+    },
+    {
+      "id": "wf2-filter",
+      "name": "🧮 Filtres (conf>80 · NY · news · risk)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Ne garde que les signaux réellement exécutables. Les filtres NY session,\n// news, corrélation et risk sont déjà appliqués côté /api/signal (executable).\nconst res = $input.first().json;\nconst out = [];\nfor (const s of (res.signals || [])) {\n  const f = s.filters || {};\n  const ok = s.executable && s.decision === 'EXECUTE' && s.confidence >= 80\n             && f.session_ny && f.news_ok && f.risk_ok && f.confidence_ok;\n  if (ok) out.push({ json: { symbol: s.symbol, direction: s.direction, confidence: s.confidence } });\n}\nreturn out;  // vide => rien ne s'exécute"
+      }
+    },
+    {
+      "id": "wf2-exec",
+      "name": "🟢 POST /api/execute (gardé)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NY_BOT_URL }}/api/execute",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ symbol: $json.symbol, direction: $json.direction, confirm: true }) }}",
+        "options": {
+          "timeout": 20000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Api-Token",
+              "value": "={{ $env.NY_BOT_TOKEN }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "wf2-tg",
+      "name": "📣 Telegram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/bot={{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $env.TELEGRAM_CHAT_ID, parse_mode: \"HTML\", text: \"🎯 <b>EXÉCUTÉ</b> \" + $json.signal.symbol + \" \" + $json.signal.direction + \" (conf \" + $json.signal.confidence + \"%) · \" + ($json.executed.dry_run ? \"DRY\" : \"LIVE\") }) }}",
+        "options": {
+          "timeout": 20000
+        }
+      }
+    }
+  ],
+  "connections": {
+    "⏰ Chaque minute": {
+      "main": [
+        [
+          {
+            "node": "📥 GET /api/signal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📥 GET /api/signal": {
+      "main": [
+        [
+          {
+            "node": "🧮 Filtres (conf>80 · NY · news · risk)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🧮 Filtres (conf>80 · NY · news · risk)": {
+      "main": [
+        [
+          {
+            "node": "🟢 POST /api/execute (gardé)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🟢 POST /api/execute (gardé)": {
+      "main": [
+        [
+          {
+            "node": "📣 Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "timezone": "Europe/Paris",
+    "saveManualExecutions": true
+  },
+  "tags": [
+    {
+      "name": "drevm"
+    }
+  ],
+  "meta": {}
+}

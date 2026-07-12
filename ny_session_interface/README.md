@@ -106,6 +106,8 @@ Ce serveur peut envoyer des **ordres réels** (quand DRY RUN est OFF).
 | GET  | `/api/signals` | derniers signaux / entrées de journal |
 | GET  | `/api/scan` | confluence courante par symbole (Wyckoff · FVG · Ichimoku), lecture seule |
 | POST | `/api/scan/ai` `{symbol}` | proxifie l'agent de scoring IA du backend sur le setup courant du symbole |
+| GET  | `/api/signal` | signal par symbole (AI Setup Validator + filtres session/news/risk) — consommé par n8n |
+| POST | `/api/execute` `{symbol,confirm}` | **exécution gardée** d'un signal (n8n) — voir garde-fous |
 | GET  | `/api/logs?after=<i>` | logs incrémentaux |
 | POST | `/api/control/start` · `/stop` | démarre / arrête le moteur |
 | POST | `/api/control/dry-run` `{enabled}` | bascule DRY RUN |
@@ -195,3 +197,25 @@ python setup_validator.py           # démo XBRUSD (sortie lisible)
 python setup_validator.py --json    # vecteur de features + sous-scores en JSON
 python setup_validator.py --news 20 # simule une annonce imminente (bloque l'EXECUTE)
 ```
+
+## Pipeline bout-en-bout (`/api/signal` → n8n → `/api/execute`)
+
+- **`GET /api/signal`** — pour chaque symbole : AI Setup Validator + filtres
+  (session NY, news, risk/halt). Renvoie `{decision, direction, confidence,
+  scores, filters, executable}`. C'est ce que **n8n** polle.
+- **`POST /api/execute {symbol, confirm:true}`** — exécution **gardée**. Elle
+  n'envoie un ordre que si **tout** est vert :
+  1. `ALLOW_EXECUTION=1` (variable d'env, **OFF par défaut**) ;
+  2. `X-Api-Token` valide (si `API_TOKEN` défini) ;
+  3. `confirm=true` ;
+  4. le signal courant du symbole est `EXECUTE` (re-validé côté serveur) ;
+  5. garde-fous moteur : kill switch, halt (drawdown), une position/symbole,
+     max trades/jour, **`DRY_RUN`** (tant qu'il est ON → aucun ordre réel).
+
+Les workflows n8n correspondants sont dans `n8n/workflows/` (WF1 poll, WF2
+signal→trade, WF3 feedback, WF4 retrain stub). Voir leur README.
+
+⚠️ **RL non implémenté** : le validateur est la v1 déterministe. Le RL (PPO/
+Transformer) reste un chantier séparé — `to_training_record()` produit déjà les
+données labellisées pour le démarrer ; WF4 est un template, sans remplacement
+auto du modèle sans validation.
