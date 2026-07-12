@@ -170,7 +170,39 @@ function gradeClass(g) {
   return g === "A+" ? "grade-Aplus" : g === "A" ? "grade-A" : g === "B" ? "grade-B" : "grade-C";
 }
 
+// Résultats IA persistés par symbole (le panneau est re-rendu toutes les 5 s).
+const aiResults = {};
+const aiPending = {};
+let lastScanList = [];
+
+function aiBlock(symbol) {
+  if (aiPending[symbol]) return '<div class="ai-line ai-wait">⏳ Analyse IA en cours…</div>';
+  const stored = aiResults[symbol];
+  if (!stored) return "";
+  if (stored.error) return `<div class="ai-line ai-err">⚠️ IA indisponible : ${escapeHtml(stored.error)}</div>`;
+  const ai = stored.ai || {};
+  const setup = stored.setup || {};
+  const rec = (ai.recommendation || "").toUpperCase();
+  const recCls = rec === "TRADE" ? "ai-trade" : rec === "WAIT" ? "ai-wait2" : "ai-skip";
+  const risks = (ai.risk_factors || []).map((x) => `<span class="chip">${escapeHtml(x)}</span>`).join("");
+  const analysed = setup.grade
+    ? `<span class="ai-analysed">analysé : ${setup.grade} ${setup.direction === "up" ? "BUY" : setup.direction === "down" ? "SELL" : ""}</span>`
+    : "";
+  return `<div class="ai-result">
+    <div class="ai-top">
+      <span class="ai-badge ${recCls}">${rec || "?"}</span>
+      <span class="ai-score">${ai.score != null ? ai.score + "/100" : "—"}</span>
+      ${analysed}
+    </div>
+    <div class="ai-reason">${escapeHtml(ai.reasoning || "")}</div>
+    ${risks ? `<div class="scan-chips">${risks}</div>` : ""}
+  </div>`;
+}
+
+function renderScanCached() { renderScan(lastScanList); }
+
 function renderScan(list) {
+  lastScanList = list || [];
   const box = $("scan");
   if (!list || !list.length) { box.innerHTML = '<div class="empty-feed">En attente du moteur…</div>'; return; }
   box.innerHTML = list.map((r) => {
@@ -223,9 +255,27 @@ function renderScan(list) {
       <div class="scan-verdict ${r.passes_profile ? "ok" : "wait"}">
         ${r.passes_profile ? "✅ passe le profil (entrée possible)" : r.is_valid ? "⚠️ valide mais grade < profil" : "⏳ pas de smart signal"}
       </div>
+      <div class="scan-ai">
+        <button class="btn-ai" data-symbol="${r.symbol}" ${r.direction ? "" : "disabled"}
+          ${aiPending[r.symbol] ? "disabled" : ""}>🤖 Analyser (IA)</button>
+        ${aiBlock(r.symbol)}
+      </div>
     </div>`;
   }).join("");
   $("scan-updated").textContent = new Date().toLocaleTimeString("fr-FR");
+}
+
+async function runAi(symbol) {
+  if (aiPending[symbol]) return;
+  aiPending[symbol] = true; renderScanCached();
+  try {
+    const r = await api("/api/scan/ai", "POST", { symbol });
+    aiResults[symbol] = { ai: r.ai || {}, setup: r.setup || {} };
+  } catch (e) {
+    aiResults[symbol] = { error: e.message };
+  } finally {
+    aiPending[symbol] = false; renderScanCached();
+  }
 }
 
 // ── Stats P&L + courbe d'équité ────────────────────────────────────────────--
@@ -389,6 +439,12 @@ function wire() {
     catch (e) { flash(e.message, "err"); }
   };
   $("btn-clearlog").onclick = () => { $("logs").innerHTML = ""; };
+
+  // Bouton « Analyser (IA) » — délégué car #scan est re-rendu périodiquement.
+  $("scan").addEventListener("click", (e) => {
+    const btn = e.target.closest(".btn-ai");
+    if (btn && btn.dataset.symbol) runAi(btn.dataset.symbol);
+  });
 }
 
 // ── Scan (plus lent : 3 timeframes × symboles à chaque appel) ────────────────

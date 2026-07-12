@@ -232,3 +232,26 @@ h2 .subtle { font-size: 11px; font-weight: 400; color: var(--muted); text-transf
 .scan-verdict { font-size: 11px; font-weight: 600; }
 .scan-verdict.ok { color: var(--green); }
 .scan-verdict.wait { color: var(--muted); }
+
+/* ── Scoring IA sur les cartes de scan ──────────────────────────────────────── */
+.scan-ai { border-top: 1px dashed var(--border); padding-top: 8px; margin-top: 2px; }
+.btn-ai {
+  background: var(--panel); border: 1px solid var(--purple); color: var(--purple);
+  border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.btn-ai:hover:not(:disabled) { background: rgba(163,113,247,.14); }
+.btn-ai:disabled { opacity: .5; cursor: default; border-color: var(--border); color: var(--muted); }
+
+.ai-line { font-size: 12px; margin-top: 7px; }
+.ai-wait { color: var(--muted); }
+.ai-err { color: var(--red); }
+
+.ai-result { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.ai-top { display: flex; align-items: center; gap: 8px; }
+.ai-badge { font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 6px; color: #fff; }
+.ai-trade { background: var(--green-dim); border: 1px solid var(--green); }
+.ai-wait2 { background: #9e6a00; border: 1px solid var(--amber); }
+.ai-skip  { background: var(--red); border: 1px solid var(--red); }
+.ai-score { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ai-reason { font-size: 12px; color: var(--txt); line-height: 1.45; }
+.ai-analysed { font-size: 10px; color: var(--muted); margin-left: auto; }

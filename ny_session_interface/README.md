@@ -104,6 +104,7 @@ Ce serveur peut envoyer des **ordres réels** (quand DRY RUN est OFF).
 | GET  | `/api/positions` | positions ouvertes + PnL |
 | GET  | `/api/signals` | derniers signaux / entrées de journal |
 | GET  | `/api/scan` | confluence courante par symbole (Wyckoff · FVG · Ichimoku), lecture seule |
+| POST | `/api/scan/ai` `{symbol}` | proxifie l'agent de scoring IA du backend sur le setup courant du symbole |
 | GET  | `/api/logs?after=<i>` | logs incrémentaux |
 | POST | `/api/control/start` · `/stop` | démarre / arrête le moteur |
 | POST | `/api/control/dry-run` `{enabled}` | bascule DRY RUN |
@@ -113,6 +114,25 @@ Ce serveur peut envoyer des **ordres réels** (quand DRY RUN est OFF).
 | POST | `/api/control/close/{ticket}` | ferme une position |
 
 Les routes `POST` exigent l'en-tête `X-Api-Token` si `API_TOKEN` est défini.
+
+### Scoring IA sur le panneau de scan
+
+Chaque carte du panneau « Scan des setups » a un bouton **🤖 Analyser (IA)**. Au clic,
+la console appelle `POST /api/scan/ai {symbol}`, qui :
+
+1. récupère le contexte courant du symbole via `scan_setups()` (grade, phase HTF, sens,
+   **et la confluence complète** : FVG frais/mitigation, Wyckoff, divergence, Kijun,
+   points /11, zone M15, trigger M5) ;
+2. proxifie vers l'**agent de scoring IA** du backend (`POST /api/scoring/analyze`,
+   Claude tool use) — qui reçoit désormais ce détail de confluence pour un score mieux
+   fondé (champ `confluence`, optionnel et rétro-compatible) ;
+3. retourne le score **/100** + recommandation **TRADE / WAIT / SKIP** + raisonnement,
+   affichés sur la carte.
+
+Config : `BACKEND_URL` (défaut `http://127.0.0.1:8000`) doit pointer sur le backend
+FastAPI principal, et ce backend a besoin de `ANTHROPIC_API_KEY`. Si le backend est
+injoignable ou la clé absente, la carte affiche « IA indisponible » (dégradation
+propre, le reste du panneau continue de fonctionner).
 
 ## Backtest — algo automatique (compte départ 100)
 

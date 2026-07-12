@@ -16,7 +16,10 @@ Lancement :
 
 from __future__ import annotations
 
+import json
 import os
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException
@@ -29,6 +32,8 @@ from ny_session_bot import engine
 API_TOKEN = os.environ.get("API_TOKEN")  # facultatif : protège les commandes
 HOST = os.environ.get("NY_BOT_HOST", "127.0.0.1")
 PORT = int(os.environ.get("NY_BOT_PORT", "8800"))
+# Backend FastAPI principal (agent de scoring IA). Surchargeable par env.
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -69,6 +74,75 @@ def get_signals():
 def get_scan():
     """Confluence courante par symbole (Wyckoff + FVG + Ichimoku), lecture seule."""
     return {"scan": engine.scan_setups()}
+
+
+class AiScanBody(BaseModel):
+    symbol: str
+
+
+@app.post("/api/scan/ai")
+def scan_ai(body: AiScanBody, x_api_token: str | None = Header(default=None)):
+    """
+    Branche l'agent de scoring IA (backend `/api/scoring/analyze`) sur un setup
+    du scan. Récupère le contexte courant du symbole (grade, phase HTF, sens),
+    proxifie vers le backend et retourne son score /100 + recommandation.
+    """
+    _check_token(x_api_token)
+
+    entry = next((s for s in engine.scan_setups() if s.get("symbol") == body.symbol), None)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Symbole inconnu : {body.symbol}")
+    if not entry.get("available"):
+        raise HTTPException(status_code=409, detail="Pas de données de marché pour ce symbole")
+    direction = entry.get("direction")
+    if direction not in ("up", "down"):
+        raise HTTPException(status_code=422, detail="Pas de setup directionnel à analyser")
+
+    ctx = entry.get("context") or {}
+    payload = {
+        "symbol": body.symbol,
+        "setup_grade": entry.get("grade", "C"),
+        "htf_phase": ctx.get("h4_phase", "accumulation"),
+        "direction": "BUY" if direction == "up" else "SELL",
+        "session_active": bool(engine.session_open),
+        "spread_ok": True,
+        "event_context": None,
+        # Confluence réelle Wyckoff+FVG+Ichimoku pour un scoring IA mieux fondé.
+        "confluence": {
+            "points": entry.get("confluence_points"),
+            "max": entry.get("confluence_max"),
+            "pillars": entry.get("confluence"),
+            "wyckoff": ctx.get("wyckoff"),
+            "rsi_divergence": ctx.get("rsi_divergence"),
+            "price_above_kijun": ctx.get("price_above_kijun"),
+            "m15_zone_touched": ctx.get("m15_zone_touched"),
+            "m5_trigger": ctx.get("m5_trigger"),
+            "fvg": entry.get("fvg"),
+        },
+        "notify": False,
+    }
+
+    try:
+        req = urllib.request.Request(
+            f"{BACKEND_URL}/api/scoring/analyze",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=90) as resp:  # noqa: S310
+            result = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")[:300]
+        raise HTTPException(status_code=502, detail=f"Backend scoring {exc.code} : {detail}")
+    except urllib.error.URLError as exc:
+        raise HTTPException(status_code=503,
+                            detail=f"Backend IA injoignable ({BACKEND_URL}) : {exc.reason}")
+
+    return {"ok": True, "ai": result, "setup": {
+        "grade": entry.get("grade"), "direction": direction,
+        "confluence_points": entry.get("confluence_points"),
+        "confluence_max": entry.get("confluence_max"),
+    }}
 
 
 @app.get("/api/logs")
