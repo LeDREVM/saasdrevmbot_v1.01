@@ -98,14 +98,27 @@ def scan_ai(body: AiScanBody, x_api_token: str | None = Header(default=None)):
     if direction not in ("up", "down"):
         raise HTTPException(status_code=422, detail="Pas de setup directionnel à analyser")
 
+    ctx = entry.get("context") or {}
     payload = {
         "symbol": body.symbol,
         "setup_grade": entry.get("grade", "C"),
-        "htf_phase": (entry.get("context") or {}).get("h4_phase", "accumulation"),
+        "htf_phase": ctx.get("h4_phase", "accumulation"),
         "direction": "BUY" if direction == "up" else "SELL",
         "session_active": bool(engine.session_open),
         "spread_ok": True,
         "event_context": None,
+        # Confluence réelle Wyckoff+FVG+Ichimoku pour un scoring IA mieux fondé.
+        "confluence": {
+            "points": entry.get("confluence_points"),
+            "max": entry.get("confluence_max"),
+            "pillars": entry.get("confluence"),
+            "wyckoff": ctx.get("wyckoff"),
+            "rsi_divergence": ctx.get("rsi_divergence"),
+            "price_above_kijun": ctx.get("price_above_kijun"),
+            "m15_zone_touched": ctx.get("m15_zone_touched"),
+            "m5_trigger": ctx.get("m5_trigger"),
+            "fvg": entry.get("fvg"),
+        },
         "notify": False,
     }
 

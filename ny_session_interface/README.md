@@ -120,9 +120,12 @@ Les routes `POST` exigent l'en-tête `X-Api-Token` si `API_TOKEN` est défini.
 Chaque carte du panneau « Scan des setups » a un bouton **🤖 Analyser (IA)**. Au clic,
 la console appelle `POST /api/scan/ai {symbol}`, qui :
 
-1. récupère le contexte courant du symbole via `scan_setups()` (grade, phase HTF, sens) ;
+1. récupère le contexte courant du symbole via `scan_setups()` (grade, phase HTF, sens,
+   **et la confluence complète** : FVG frais/mitigation, Wyckoff, divergence, Kijun,
+   points /11, zone M15, trigger M5) ;
 2. proxifie vers l'**agent de scoring IA** du backend (`POST /api/scoring/analyze`,
-   Claude tool use) ;
+   Claude tool use) — qui reçoit désormais ce détail de confluence pour un score mieux
+   fondé (champ `confluence`, optionnel et rétro-compatible) ;
 3. retourne le score **/100** + recommandation **TRADE / WAIT / SKIP** + raisonnement,
    affichés sur la carte.
 
