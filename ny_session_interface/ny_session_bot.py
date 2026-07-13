@@ -418,13 +418,35 @@ def score_confluence(ctx, fvg: dict, direction: str | None) -> dict:
     }
 
 
+# Fournisseur de prix optionnel (cascade multi-source, cf. api.py). Signature :
+#   provider(symbol, timeframe, n) -> DataFrame | None
+# S'il renvoie des bougies, elles priment sur MT5 ; sinon on retombe sur MT5/sim.
+last_price_source: dict = {}
+_price_provider = None
+
+
+def set_price_provider(fn):
+    global _price_provider
+    _price_provider = fn
+
+
 def get_rates(symbol: str, timeframe: int, n: int) -> pd.DataFrame | None:
+    if _price_provider is not None:
+        try:
+            pdf = _price_provider(symbol, timeframe, n)
+        except Exception:  # noqa: BLE001
+            log.exception("price provider error (%s tf=%s)", symbol, timeframe)
+            pdf = None
+        if pdf is not None and len(pdf) > 0:
+            return pdf
     rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, n)
     if rates is None or len(rates) == 0:
         log.warning("Pas de données pour %s tf=%s", symbol, timeframe)
         return None
     df = pd.DataFrame(rates)
     df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
+    if timeframe == mt5.TIMEFRAME_M5:
+        last_price_source[symbol] = "sim" if SIMULATE else "mt5"
     return df
 
 
@@ -1077,6 +1099,7 @@ class BotEngine:
                 out.append({
                     "symbol": name,
                     "available": True,
+                    "price_source": last_price_source.get(cfg["mt5_symbol"], "sim" if SIMULATE else "mt5"),
                     "last_price": round(float(df_m5["close"].iloc[-1]), 5) if df_m5 is not None else None,
                     "direction": conf["direction"],
                     "grade": grade,
