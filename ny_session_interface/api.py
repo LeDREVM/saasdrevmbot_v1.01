@@ -344,7 +344,13 @@ def execute(body: ExecuteBody, x_api_token: str | None = Header(default=None)):
                             detail=f"Signal non exécutable (décision={sig['decision']}, "
                                    f"confiance={sig['confidence']}%, filtres={sig['filters']})")
 
-    direction = body.direction or sig["direction"]
+    # La direction exécutée DOIT être celle que le validator a validée : un
+    # body.direction opposé ouvrirait un BUY cautionné par un score SELL.
+    if body.direction and body.direction != sig["direction"]:
+        raise HTTPException(status_code=409,
+                            detail=f"direction demandée ({body.direction}) ≠ direction "
+                                   f"du signal validé ({sig['direction']})")
+    direction = sig["direction"]
     res = engine.execute_signal(body.symbol, direction, source="n8n")
     if not res.get("ok"):
         raise HTTPException(status_code=409, detail=res.get("reason", "exécution refusée"))

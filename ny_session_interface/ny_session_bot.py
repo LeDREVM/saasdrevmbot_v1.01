@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import random
 import threading
@@ -584,6 +585,9 @@ class BotEngine:
     def _calc_lot(self, symbol: str, sl_distance_price: float, risk_pct: float) -> float:
         info = mt5.symbol_info(symbol)
         acc = mt5.account_info()
+        if info is None or acc is None or info.trade_tick_size <= 0:
+            log.warning("[%s] symbol/account_info indisponible — lot=0.", symbol)
+            return 0.0
         risk_money = acc.balance * risk_pct / 100.0
         ticks = sl_distance_price / info.trade_tick_size
         loss_per_lot = ticks * info.trade_tick_value
@@ -595,9 +599,17 @@ class BotEngine:
         return round(lots, 2)
 
     def _open_trade(self, symbol: str, direction: str, atr_val: float, cfg: dict):
+        # Garde ATR : un NaN passe `not atr_val` (not nan == False) et produirait
+        # entry/SL/TP/lots NaN envoyés au broker (audit P1-3).
+        if atr_val is None or not math.isfinite(atr_val) or atr_val <= 0:
+            log.warning("[%s] ATR invalide (%s) — ordre annulé.", symbol, atr_val)
+            return None
         with self._mt5_lock:
             info = mt5.symbol_info(symbol)
             tick = mt5.symbol_info_tick(symbol)
+            if info is None or tick is None:
+                log.warning("[%s] symbol_info/tick indisponible — ordre annulé.", symbol)
+                return None
             profile = self.profile
             sl_dist = atr_val * cfg["sl_atr_mult"]
             if direction == "up":
@@ -632,6 +644,9 @@ class BotEngine:
                 "type_filling": mt5.ORDER_FILLING_IOC,
             }
             result = mt5.order_send(request)
+            if result is None:
+                log.error("[%s] order_send → None (connexion perdue ?)", symbol)
+                return None
             if result.retcode != mt5.TRADE_RETCODE_DONE:
                 log.error("[%s] Ordre REFUSÉ : retcode=%s comment=%s",
                           symbol, result.retcode, result.comment)
@@ -647,6 +662,8 @@ class BotEngine:
         for pos in self._my_positions():
             with self._mt5_lock:
                 tick = mt5.symbol_info_tick(pos.symbol)
+                if tick is None:
+                    continue
                 r_dist = abs(pos.price_open - pos.sl)
                 if r_dist <= 0:
                     continue
@@ -661,6 +678,8 @@ class BotEngine:
 
     def _modify_sl(self, pos, new_sl: float):
         info = mt5.symbol_info(pos.symbol)
+        if info is None:
+            return
         mt5.order_send({"action": mt5.TRADE_ACTION_SLTP, "position": pos.ticket,
                         "sl": round(new_sl, info.digits), "tp": pos.tp})
         log.info("[%s] SL → break-even (ticket %s)", pos.symbol, pos.ticket)
@@ -675,6 +694,9 @@ class BotEngine:
                     log.info("[%s] DRY_RUN → fermeture simulée (%s)", pos.symbol, reason)
                     continue
                 tick = mt5.symbol_info_tick(pos.symbol)
+                if tick is None:
+                    log.warning("[%s] tick indisponible — fermeture reportée.", pos.symbol)
+                    continue
                 otype = mt5.ORDER_TYPE_SELL if pos.type == mt5.POSITION_TYPE_BUY else mt5.ORDER_TYPE_BUY
                 price = tick.bid if pos.type == mt5.POSITION_TYPE_BUY else tick.ask
                 res = mt5.order_send({
@@ -698,6 +720,8 @@ class BotEngine:
                     log.info("[%s] DRY_RUN → fermeture simulée ticket %s", pos.symbol, ticket)
                     return True
                 tick = mt5.symbol_info_tick(pos.symbol)
+                if tick is None:
+                    return False
                 otype = mt5.ORDER_TYPE_SELL if pos.type == mt5.POSITION_TYPE_BUY else mt5.ORDER_TYPE_BUY
                 price = tick.bid if pos.type == mt5.POSITION_TYPE_BUY else tick.ask
                 res = mt5.order_send({
@@ -751,7 +775,7 @@ class BotEngine:
                 return {"ok": False, "reason": "spread trop large"}
             ctx, _df, atr_val = build_context(cfg)
 
-        if atr_val is None or not atr_val:
+        if atr_val is None or not math.isfinite(atr_val) or atr_val <= 0:
             return {"ok": False, "reason": "pas de données de marché / ATR indisponible"}
 
         res = self._open_trade(sym, direction, atr_val, cfg)
@@ -783,8 +807,10 @@ class BotEngine:
         """Enregistre un trade fermé avec son PnL réalisé (pour les stats)."""
         try:
             info = mt5.symbol_info(pos.symbol)
+            if info is None:
+                return
             diff = (exit_px - pos.price_open) if pos.type == mt5.POSITION_TYPE_BUY else (pos.price_open - exit_px)
-            pnl = diff / info.trade_tick_size * info.trade_tick_value
+            pnl = diff / info.trade_tick_size * info.trade_tick_value * pos.volume
             self.closed_trades.appendleft({
                 "ts": datetime.now(ZoneInfo("UTC")).isoformat(timespec="seconds"),
                 "symbol": pos.symbol,
@@ -881,6 +907,23 @@ class BotEngine:
             info = mt5.symbol_info(symbol)
         return info is not None and info.spread <= max_points
 
+    def _reconnect(self) -> bool:
+        """Rétablit la connexion MT5 (terminal redémarré, coupure réseau) —
+        la boucle ne doit plus mourir sur une déconnexion (audit P1-4)."""
+        with self._mt5_lock:
+            try:
+                mt5.shutdown()
+            except Exception:  # noqa: BLE001
+                pass
+            ok = (mt5.initialize(login=MT5_LOGIN, password=MT5_PASSWORD, server=MT5_SERVER)
+                  if MT5_LOGIN else mt5.initialize())
+        self.connected = bool(ok)
+        if ok:
+            log.info("🔌 MT5 reconnecté.")
+        else:
+            log.warning("Reconnexion MT5 échouée : %s", mt5.last_error())
+        return bool(ok)
+
     # ── boucle ────────────────────────────────────────────────────────────
     def _interruptible_sleep(self, seconds: float):
         end = time.time() + seconds
@@ -910,52 +953,68 @@ class BotEngine:
 
         try:
             while not self._stop.is_set():
-                now_ny = datetime.now(TZ_NY)
-                now_utc = datetime.now(ZoneInfo("UTC"))
-                today = now_ny.strftime("%Y-%m-%d")
-                self.last_update = now_utc.isoformat(timespec="seconds")
+                # Résilience (audit P1-4) : une exception dans UNE itération ne
+                # tue plus la boucle — log, tentative de reconnexion, on continue.
+                try:
+                    now_ny = datetime.now(TZ_NY)
+                    now_utc = datetime.now(ZoneInfo("UTC"))
+                    today = now_ny.strftime("%Y-%m-%d")
+                    self.last_update = now_utc.isoformat(timespec="seconds")
 
-                if today != self.state.day:
+                    # Santé connexion : MT5 peut tomber (terminal fermé, réseau).
                     with self._mt5_lock:
-                        acc = mt5.account_info()
-                    if acc is not None:
-                        self.state.reset(acc.equity, today, acc.balance)
-                        self._save_state()
-                        log.info("🌅 Nouveau jour NY %s | equity départ=%.2f", today, acc.equity)
+                        alive = mt5.account_info() is not None
+                    if not alive:
+                        log.warning("MT5 déconnecté — tentative de reconnexion…")
+                        if not self._reconnect():
+                            self._interruptible_sleep(POLL_SECONDS); continue
 
-                self.sample_equity()
+                    if today != self.state.day:
+                        with self._mt5_lock:
+                            acc = mt5.account_info()
+                        if acc is not None:
+                            self.state.reset(acc.equity, today, acc.balance)
+                            self._save_state()
+                            log.info("🌅 Nouveau jour NY %s | equity départ=%.2f", today, acc.equity)
 
-                self.session_open = self._in_ny_session(now_ny)
-                self.kill_switch = self.kill_switch or os.path.exists(KILL_SWITCH_FILE)
+                    self.sample_equity()
 
-                if session_was_open and not self.session_open and CLOSE_AT_SESSION_END:
-                    self.close_all_positions("fin_session_NY")
-                session_was_open = self.session_open
+                    self.session_open = self._in_ny_session(now_ny)
+                    self.kill_switch = self.kill_switch or os.path.exists(KILL_SWITCH_FILE)
 
-                if self.kill_switch:
-                    self._interruptible_sleep(POLL_SECONDS); continue
-                if not self.session_open:
-                    self._interruptible_sleep(POLL_SECONDS); continue
-                if any(a <= now_utc <= b for a, b in NEWS_BLACKOUTS):
-                    log.info("📰 Blackout news — pas d'entrée.")
-                    self._interruptible_sleep(POLL_SECONDS); continue
+                    if session_was_open and not self.session_open and CLOSE_AT_SESSION_END:
+                        self.close_all_positions("fin_session_NY")
+                    session_was_open = self.session_open
 
-                self._manage_open_positions()
+                    if self.kill_switch:
+                        self._interruptible_sleep(POLL_SECONDS); continue
+                    if not self.session_open:
+                        self._interruptible_sleep(POLL_SECONDS); continue
+                    if any(a <= now_utc <= b for a, b in NEWS_BLACKOUTS):
+                        log.info("📰 Blackout news — pas d'entrée.")
+                        self._interruptible_sleep(POLL_SECONDS); continue
 
-                if self._daily_dd_breached():
-                    if not self.state.halted:
-                        self.state.halted = True
-                        self._save_state()  # le halt survit à un restart
-                    self._interruptible_sleep(POLL_SECONDS); continue
-                if self.state.halted:  # halt restauré du disque après restart
-                    self._interruptible_sleep(POLL_SECONDS); continue
+                    self._manage_open_positions()
 
-                self._scan_symbols()
-                self._interruptible_sleep(POLL_SECONDS)
+                    if self._daily_dd_breached():
+                        if not self.state.halted:
+                            self.state.halted = True
+                            self._save_state()  # le halt survit à un restart
+                        self._interruptible_sleep(POLL_SECONDS); continue
+                    if self.state.halted:  # halt restauré du disque après restart
+                        self._interruptible_sleep(POLL_SECONDS); continue
 
-        except Exception as e:  # noqa: BLE001
-            self.last_error = str(e)
-            log.exception("Erreur fatale de boucle : %s", e)
+                    self._scan_symbols()
+                    self._interruptible_sleep(POLL_SECONDS)
+
+                except Exception as e:  # noqa: BLE001
+                    self.last_error = str(e)
+                    log.exception("Erreur boucle (itération survolée) : %s", e)
+                    with self._mt5_lock:
+                        dead = mt5.account_info() is None
+                    if dead:
+                        self._reconnect()
+                    self._interruptible_sleep(POLL_SECONDS)
         finally:
             with self._mt5_lock:
                 mt5.shutdown()
@@ -1180,9 +1239,11 @@ class BotEngine:
                 with self._mt5_lock:
                     tick = mt5.symbol_info_tick(p.symbol)
                     info = mt5.symbol_info(p.symbol)
+                if tick is None or info is None:
+                    continue
                 px = tick.bid if p.type == mt5.POSITION_TYPE_BUY else tick.ask
                 diff = (px - p.price_open) if p.type == mt5.POSITION_TYPE_BUY else (p.price_open - px)
-                pnl = diff / info.trade_tick_size * info.trade_tick_value
+                pnl = diff / info.trade_tick_size * info.trade_tick_value * p.volume
                 out.append({
                     "ticket": p.ticket, "symbol": p.symbol,
                     "type": "BUY" if p.type == mt5.POSITION_TYPE_BUY else "SELL",
