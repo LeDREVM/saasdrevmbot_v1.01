@@ -57,9 +57,18 @@ except ImportError:
 # CONFIGURATION
 # ============================================================================
 
-MT5_LOGIN: int | None = None
-MT5_PASSWORD: str | None = None
-MT5_SERVER: str | None = None
+# Identifiants du compte MT5 (production, VPS Windows). Fournis via l'ENVIRONNEMENT
+# (.env non committé, ou secrets NSSM) — JAMAIS en clair dans le code. Laisser vide
+# pour se brancher sur le terminal MT5 déjà ouvert et loggé manuellement
+# (mt5.initialize() sans identifiants).
+def _env_int(name: str) -> int | None:
+    raw = os.environ.get(name, "").strip()
+    return int(raw) if raw.isdigit() else None
+
+
+MT5_LOGIN: int | None = _env_int("MT5_LOGIN")
+MT5_PASSWORD: str | None = os.environ.get("MT5_PASSWORD") or None
+MT5_SERVER: str | None = os.environ.get("MT5_SERVER") or None
 
 KILL_SWITCH_FILE = "STOP.flag"
 MAGIC = 770077
@@ -82,7 +91,9 @@ PROFILES = {
     "AGGRESSIVE": dict(risk_pct=1.5, min_grade="B",  rr_target=2.0,
                        max_trades_per_symbol=4, max_daily_dd_pct=5.0, move_sl_to_be_at_r=1.0),
 }
-DEFAULT_PROFILE = "SCALPING"
+DEFAULT_PROFILE = os.environ.get("BOT_PROFILE", "SCALPING").upper()
+if DEFAULT_PROFILE not in PROFILES:
+    DEFAULT_PROFILE = "SCALPING"
 
 SYMBOLS = {
     "US30":   dict(mt5_symbol="US30",   max_spread_points=50, sl_atr_mult=1.5),
@@ -499,7 +510,9 @@ class DailyState:
 class BotEngine:
     def __init__(self):
         self.profile_name = DEFAULT_PROFILE
-        self.dry_run = True
+        # DRY_RUN par défaut = True (aucun ordre réel envoyé). Mettre DRY_RUN=0
+        # dans l'environnement (VPS/NSSM) pour armer l'exécution LIVE full-auto.
+        self.dry_run = os.environ.get("DRY_RUN", "1") != "0"
         self.kill_switch = os.path.exists(KILL_SWITCH_FILE)
         self.simulate = SIMULATE
         self.telegram = bool(TELEGRAM_TOKEN and TELEGRAM_CHAT_ID)
