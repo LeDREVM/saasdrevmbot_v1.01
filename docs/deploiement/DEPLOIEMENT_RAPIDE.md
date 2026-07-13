@@ -198,7 +198,7 @@ netlify open:site
 
 1. **Déployer** le site (choisir une option ci-dessus)
 2. **Configurer** VITE_API_URL dans Netlify
-3. **Déployer** le backend (Railway/Render/Docker)
+3. **Déployer** le backend (Render/Docker)
 4. **Tester** le site en production
 
 ---

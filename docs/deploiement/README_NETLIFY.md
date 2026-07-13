@@ -81,20 +81,13 @@ netlify deploy --prod
 
 Le frontend nécessite un backend FastAPI déployé. Options recommandées:
 
-### Option 1: Railway.app
-```bash
-railway login
-railway init
-railway up
-```
-
-### Option 2: Render.com
+### Option 1: Render.com
 1. Connecter le repository GitHub
 2. Créer un nouveau Web Service
 3. Build command: `pip install -r backend/requirements.txt`
 4. Start command: `cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT`
 
-### Option 3: Docker (VPS)
+### Option 2: Docker (VPS)
 ```bash
 docker-compose -f docker-compose.prod.yml up -d
 ```
