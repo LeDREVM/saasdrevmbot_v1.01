@@ -82,6 +82,28 @@ def get_scan():
     return {"scan": engine.scan_setups()}
 
 
+# ── Navigation multi-dashboards ──────────────────────────────────────────────
+def _dashboards() -> list[dict]:
+    """Liste des dashboards du projet (URLs surchargeables par env)."""
+    return [
+        {"key": "console", "label": "Bot NY Session", "icon": "🦅",
+         "url": os.environ.get("DASH_CONSOLE_URL", f"http://localhost:{PORT}"),
+         "current": True},
+        {"key": "analytics", "label": "Analytics", "icon": "📊",
+         "url": os.environ.get("DASH_ANALYTICS_URL", "http://localhost:5173"),
+         "current": False},
+        {"key": "saas", "label": "SaaS", "icon": "🗂️",
+         "url": os.environ.get("DASH_SAAS_URL", "http://localhost:3000"),
+         "current": False},
+    ]
+
+
+@app.get("/api/dashboards")
+def get_dashboards():
+    """Dashboards du projet + celui courant, pour la barre de navigation."""
+    return {"dashboards": _dashboards()}
+
+
 class AiScanBody(BaseModel):
     symbol: str
 
