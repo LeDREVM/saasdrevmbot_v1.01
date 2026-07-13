@@ -227,6 +227,15 @@ python setup_validator.py --news 20 # simule une annonce imminente (bloque l'EXE
 Les workflows n8n correspondants sont dans `n8n/workflows/` (WF1 poll, WF2
 signal→trade, WF3 feedback, WF4 retrain stub). Voir leur README.
 
+### Auto-journalisation Supabase
+
+Quand `/api/execute` passe un trade, `trade_journal.py` l'insère dans la table
+`journal_trades` de Supabase (REST, clé service_role) — `result='running'`.
+Activé si `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` + `JOURNAL_USER_ID` sont
+définis ; sinon ignoré (le trade s'exécute quand même). La réponse `/api/execute`
+inclut un champ `journal`. Les stats sont exposées par la vue `journal_stats`
+(winrate, R total, profit factor, best/worst R — par utilisateur, RLS).
+
 ⚠️ **RL non implémenté** : le validateur est la v1 déterministe. Le RL (PPO/
 Transformer) reste un chantier séparé — `to_training_record()` produit déjà les
 données labellisées pour le démarrer ; WF4 est un template, sans remplacement

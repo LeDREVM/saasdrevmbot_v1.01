@@ -30,6 +30,7 @@ from pydantic import BaseModel
 
 import news
 import setup_validator as validator
+import trade_journal
 from ny_session_bot import engine, SYMBOLS, get_rates, mt5
 
 API_TOKEN = os.environ.get("API_TOKEN")  # facultatif : protège les commandes
@@ -248,7 +249,14 @@ def execute(body: ExecuteBody, x_api_token: str | None = Header(default=None)):
     res = engine.execute_signal(body.symbol, direction, source="n8n")
     if not res.get("ok"):
         raise HTTPException(status_code=409, detail=res.get("reason", "exécution refusée"))
-    return {"ok": True, "executed": res, "signal": sig}
+
+    # Auto-journalisation Supabase (best-effort, n'échoue jamais l'exécution).
+    order = res.get("order", {})
+    journal = trade_journal.record_trade(
+        body.symbol, direction, entry=order.get("entry"), sl=order.get("sl"),
+        tp=order.get("tp"), notes=f"auto/n8n · confiance {sig.get('confidence')}%")
+
+    return {"ok": True, "executed": res, "signal": sig, "journal": journal}
 
 
 @app.get("/api/logs")
