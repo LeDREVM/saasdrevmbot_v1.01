@@ -1,14 +1,32 @@
-# telegram.py
+# telegram.py — Notifications Telegram du bot
+import os
+
 import requests
 
-TOKEN = "YOUR_BOT_TOKEN"
-CHAT_ID = "YOUR_CHAT_ID"
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "YOUR_BOT_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "YOUR_CHAT_ID")
 
 
+def send(msg):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    requests.post(url, json={"chat_id": CHAT_ID, "text": msg})
 
-if div_signal:
 
-    message = f"""
+# ---------------------------------------------------------------------------
+# Messages pré-formatés (anciens blocs orphelins, remis en fonctions propres)
+# ---------------------------------------------------------------------------
+
+def notify_divergence(pair, div_signal):
+    """Alerte divergence RSI simple."""
+    if not div_signal:
+        return
+    send(f"""
 ⚡ RSI DIVERGENCE DETECTED
 
 Pair: {pair}
@@ -20,30 +38,14 @@ Type: {div_signal}
 - Liquidity sweep incoming
 
 ⚠️ Wait M5 confirmation before entry
-"""
-
-    send(message)
-
-def send(msg):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    requests.post(url, json={"chat_id": CHAT_ID, "text": msg})
+""")
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-if div_signals:
-
-    msg = f"""
+def notify_divergences(pair, div_signals):
+    """Alerte multi-divergences (divergence engine)."""
+    if not div_signals:
+        return
+    send(f"""
 ⚡ DIVERGENCE ENGINE
 
 Pair: {pair}
@@ -55,31 +57,28 @@ Signals: {", ".join(div_signals)}
 - Wyckoff trap possible
 
 ⚠️ Wait M5 break structure before entry
-"""
-
-    send(msg)    
+""")
 
 
- last_rsi = df["rsi"].iloc[-1]
+def filter_divergences(df, div_signals):
+    """Filtre les divergences selon le RSI courant (contexte extrême)."""
+    last_rsi = df["rsi"].iloc[-1]
+    filtered = []
+    for sig in div_signals:
+        if sig == "BULLISH_DIVERGENCE" and last_rsi < 40:
+            filtered.append(sig)
+        elif sig == "BEARISH_DIVERGENCE" and last_rsi > 60:
+            filtered.append(sig)
+        elif "HIDDEN" in sig:
+            filtered.append(sig)
+    return filtered
 
-filtered = []
 
-for sig in div_signals:
-
-    if sig == "BULLISH_DIVERGENCE" and last_rsi < 40:
-        filtered.append(sig)
-
-    elif sig == "BEARISH_DIVERGENCE" and last_rsi > 60:
-        filtered.append(sig)
-
-    elif "HIDDEN" in sig:
-        filtered.append(sig)   
-
-signal = smart_signal(df)
-
-if signal:
-
-    msg = f"""
+def notify_smart_money(pair, signal):
+    """Alerte signal smart money complet (entry / SL / TP / confluence)."""
+    if not signal:
+        return
+    send(f"""
 🔥 SMART MONEY SIGNAL
 
 Pair: {pair}
@@ -95,6 +94,4 @@ Type: {signal['signal']}
 - Breakout: {signal['breakout']}
 
 ⚠️ Confirm M5 structure before execution
-"""
-
-    send(msg)        
+""")

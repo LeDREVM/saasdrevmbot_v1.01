@@ -1,0 +1,13 @@
+# trading_bot — dépendances
+# Installation :  pip install -r requirements.txt
+
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pandas>=2.0
+requests>=2.31
+python-dotenv>=1.0
+ta>=0.11              # indicateurs techniques (RSI, etc.)
+plotly>=5.20          # graphiques (optionnel côté serveur)
+
+# Exécution MT5 (Windows uniquement) — décommenter si besoin
+# MetaTrader5>=5.0.45

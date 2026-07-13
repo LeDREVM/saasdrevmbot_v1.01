@@ -1,8 +1,16 @@
 # data_engine.py
+import os
+
 import requests
 import pandas as pd
 
-API_KEY = "YOUR_TWELVEDATA_KEY"
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+API_KEY = os.getenv("TWELVEDATA_API_KEY", "YOUR_TWELVEDATA_KEY")
 
 PAIRS = ["EUR/USD", "GBP/JPY", "XAU/USD", "USD/CAD"]
 

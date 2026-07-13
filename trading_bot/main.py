@@ -5,6 +5,7 @@ from scoring_engine import score_signal
 from telegram import send
 from divergence_engine import detect_divergence
 from smart_money_engine import smart_signal
+from db import save_signal
 
 div_signals = detect_divergences(df)
 while True:
@@ -16,6 +17,17 @@ while True:
         score, grade = score_signal(analysis, df)
 
         if analysis["signal"] != "NONE":
+
+            # Alimente le dashboard (db.sqlite)
+            save_signal(
+                pair=pair,
+                signal=analysis["signal"],
+                setup=analysis.get("setup"),
+                score=score,
+                grade=grade,
+                price=analysis.get("price"),
+                rsi=analysis.get("rsi"),
+            )
 
             msg = f"""
 📊 {pair}
