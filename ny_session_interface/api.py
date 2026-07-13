@@ -83,6 +83,37 @@ def get_scan():
     return {"scan": engine.scan_setups()}
 
 
+# ── Réception des données MT5 poussées par le pont (mt5_data_sender.py) ───────
+# Store en mémoire des dernières bougies par symbole (source alternative quand
+# le terminal MT5 tourne sur un VPS séparé qui POST vers MARKET_DATA_API_URL).
+_market_data: dict[str, dict] = {}
+
+
+class MarketDataBody(BaseModel):
+    symbol: str
+    candles: list[dict]
+
+
+@app.post("/api/market-data")
+def post_market_data(body: MarketDataBody):
+    """Reçoit {symbol, candles:[{time,open,high,low,close,volume}]} du pont MT5."""
+    _market_data[body.symbol] = {
+        "candles": body.candles,
+        "count": len(body.candles),
+        "received_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    return {"ok": True, "symbol": body.symbol, "count": len(body.candles)}
+
+
+@app.get("/api/market-data")
+def get_market_data(symbol: str | None = None):
+    """État des données MT5 reçues (monitoring). ?symbol=XAUUSD pour les bougies."""
+    if symbol:
+        return _market_data.get(symbol, {"count": 0, "candles": []})
+    return {"symbols": {s: {"count": d["count"], "received_at": d["received_at"]}
+                        for s, d in _market_data.items()}}
+
+
 # ── Navigation multi-dashboards ──────────────────────────────────────────────
 def _dashboards() -> list[dict]:
     """Liste des dashboards du projet (URLs surchargeables par env)."""

@@ -35,8 +35,10 @@ le seul maillon vraiment complémentaire : il lit l'OHLC MT5 (M5, 100 bougies,
 7 symboles) et le pousse toutes les 5 min vers une API. C'est la brique
 **« MT5 Data Collector »** de l'architecture cible.
 
-**À configurer** : l'URL de collecte se définit via la variable d'environnement
-`MARKET_DATA_API_URL` (ex. `http://localhost:8800/api/market-data`). Sans elle, le
+**Branchement** : définir `MARKET_DATA_API_URL` sur l'endpoint récepteur de la
+console — `http://<console>:8800/api/market-data` (implémenté dans
+`ny_session_interface/api.py`, qui stocke les dernières bougies par symbole et
+les expose en `GET /api/market-data` pour le monitoring). Sans la variable, le
 script s'arrête avec un message. Le reste du dépôt `goldrogers-trading-bot` (indicateurs Wyckoff/
 Ichimoku/RSI, bots, dashboards) **duplique** ce que le pipeline `ny_session_interface`
 fait déjà en plus propre → volontairement **non importé**.

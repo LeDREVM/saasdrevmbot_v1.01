@@ -111,6 +111,8 @@ Ce serveur peut envoyer des **ordres réels** (quand DRY RUN est OFF).
 | GET  | `/api/positions` | positions ouvertes + PnL |
 | GET  | `/api/signals` | derniers signaux / entrées de journal |
 | GET  | `/api/scan` | confluence courante par symbole (Wyckoff · FVG · Ichimoku), lecture seule |
+| POST | `/api/market-data` `{symbol,candles}` | reçoit l'OHLC poussé par le pont MT5 (`integrations/goldrogers-mt5`) |
+| GET  | `/api/market-data[?symbol=]` | état / dernières bougies reçues (monitoring) |
 | POST | `/api/scan/ai` `{symbol}` | proxifie l'agent de scoring IA du backend sur le setup courant du symbole |
 | GET  | `/api/signal` | signal par symbole (AI Setup Validator + filtres session/news/risk) — consommé par n8n |
 | POST | `/api/execute` `{symbol,confirm}` | **exécution gardée** d'un signal (n8n) — voir garde-fous |
