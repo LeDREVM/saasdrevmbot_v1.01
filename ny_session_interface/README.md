@@ -208,7 +208,13 @@ python setup_validator.py --news 20 # simule une annonce imminente (bloque l'EXE
 
 - **`GET /api/signal`** — pour chaque symbole : AI Setup Validator + filtres
   (session NY, news, risk/halt). Renvoie `{decision, direction, confidence,
-  scores, filters, executable}`. C'est ce que **n8n** polle.
+  scores, filters, news, executable}`. C'est ce que **n8n** polle.
+  Le **filtre news est réel** : `news.py` interroge le calendrier backend
+  (`/api/calendar/upcoming`, même source ForexFactory que le scraper
+  `goldyxrogers`), mappe les devises au symbole et abaisse le `news_score`
+  (≤30 min → 15, ≤60 min → 40) → le hard-filter News (<60) bloque l'EXECUTE
+  à l'approche d'une annonce. Backend injoignable → `news_score=100` (pas de
+  pénalité, dégradation propre).
 - **`POST /api/execute {symbol, confirm:true}`** — exécution **gardée**. Elle
   n'envoie un ordre que si **tout** est vert :
   1. `ALLOW_EXECUTION=1` (variable d'env, **OFF par défaut**) ;
