@@ -112,7 +112,7 @@
 	<div class="widget-header">
 		<div class="header-left">
 			<h2>📊 Calendrier Économique</h2>
-			<span class="source">Trading Economics</span>
+			<span class="source">ForexFactory</span>
 		</div>
 		<button class="refresh-btn" on:click={handleRefresh} disabled={loading}>
 			{loading ? '⏳' : '🔄'} Actualiser
