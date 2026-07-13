@@ -217,11 +217,12 @@ python setup_validator.py --news 20 # simule une annonce imminente (bloque l'EXE
   (≤30 min → 15, ≤60 min → 40) → le hard-filter News (<60) bloque l'EXECUTE
   à l'approche d'une annonce. Backend injoignable → `news_score=100` (pas de
   pénalité, dégradation propre).
-  **Source de prix** configurable via `PRICE_SOURCE` : `mt5` (défaut),
-  `twelvedata` (`twelvedata.py`, `TWELVEDATA_API_KEY`) ou `alphavantage`
-  (`alphavantage.py`, `ALPHAVANTAGE_API_KEY` — forex + actions/indices ; pas
-  d'intraday Brent). Fallback auto sur MT5/sim si la source est indisponible ;
-  le champ `price_source` de `/api/signal` indique la source réellement utilisée.
+  **Source(s) de prix** via `PRICE_SOURCE` : `mt5` (défaut), `twelvedata`
+  (`TWELVEDATA_API_KEY`), `alphavantage` (`ALPHAVANTAGE_API_KEY` — forex +
+  actions/indices, pas d'intraday Brent), **ou une cascade** ordonnée séparée
+  par des virgules, ex. `twelvedata,alphavantage,mt5` : chaque source est essayée
+  jusqu'à obtenir des bougies valides, **MT5/sim en filet final**. Le champ
+  `price_source` de `/api/signal` indique la source réellement retenue.
 - **`POST /api/execute {symbol, confirm:true}`** — exécution **gardée**. Elle
   n'envoie un ordre que si **tout** est vert :
   1. `ALLOW_EXECUTION=1` (variable d'env, **OFF par défaut**) ;

@@ -43,24 +43,42 @@ BACKEND_URL = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
 # Exécution d'ordres via /api/execute : DÉSACTIVÉE par défaut (garde-fou).
 ALLOW_EXECUTION = os.environ.get("ALLOW_EXECUTION", "0") == "1"
 SIGNAL_BARS = 250
-# Source de prix du validator : "mt5" (défaut) ou "twelvedata".
+# Source(s) de prix du validator : "mt5" (défaut) ou une CASCADE ordonnée,
+# séparée par des virgules, ex. "twelvedata,alphavantage,mt5". Chaque source est
+# essayée dans l'ordre jusqu'à obtenir des bougies valides ; MT5/sim sert de
+# filet final même s'il n'est pas listé.
 PRICE_SOURCE = os.environ.get("PRICE_SOURCE", "mt5").lower()
 
 
+def _mt5_label() -> str:
+    return "sim" if engine.simulate else "mt5"
+
+
+def _provider_candles(src: str, name: str, cfg: dict):
+    """Bougies d'une source donnée, ou None si indisponible."""
+    if src == "twelvedata" and twelvedata.enabled():
+        return twelvedata.get_candles(name, interval="5min", outputsize=SIGNAL_BARS)
+    if src == "alphavantage" and alphavantage.enabled():
+        return alphavantage.get_candles(name, interval="5min", outputsize=SIGNAL_BARS)
+    if src in ("mt5", "sim"):
+        with engine._mt5_lock:
+            return get_rates(cfg["mt5_symbol"], mt5.TIMEFRAME_M5, SIGNAL_BARS)
+    return None
+
+
 def _load_ohlc(name: str, cfg: dict):
-    """Charge les bougies M5 d'un symbole. Renvoie (df, source). Twelve Data si
-    PRICE_SOURCE=twelvedata + clé dispo, sinon MT5/sim (avec fallback)."""
-    if PRICE_SOURCE == "twelvedata" and twelvedata.enabled():
-        df = twelvedata.get_candles(name, interval="5min", outputsize=SIGNAL_BARS)
+    """Charge les bougies M5 en cascade selon PRICE_SOURCE. Renvoie (df, source)."""
+    order = [s.strip() for s in PRICE_SOURCE.split(",") if s.strip()] or ["mt5"]
+    for src in order:
+        df = _provider_candles(src, name, cfg)
         if df is not None and len(df) >= 60:
-            return df, "twelvedata"
-    elif PRICE_SOURCE == "alphavantage" and alphavantage.enabled():
-        df = alphavantage.get_candles(name, interval="5min", outputsize=SIGNAL_BARS)
+            return df, (_mt5_label() if src in ("mt5", "sim") else src)
+    # Filet final MT5/sim si non déjà tenté dans la cascade.
+    if not ({"mt5", "sim"} & set(order)):
+        df = _provider_candles("mt5", name, cfg)
         if df is not None and len(df) >= 60:
-            return df, "alphavantage"
-    with engine._mt5_lock:
-        df = get_rates(cfg["mt5_symbol"], mt5.TIMEFRAME_M5, SIGNAL_BARS)
-    return df, ("sim" if engine.simulate else "mt5")
+            return df, _mt5_label()
+    return None, _mt5_label()
 
 STATIC_DIR = Path(__file__).parent / "static"
 
