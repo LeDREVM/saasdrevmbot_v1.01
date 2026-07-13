@@ -16,3 +16,6 @@ __pycache__/
 # Bases de données locales (régénérées)
 *.sqlite
 *.db
+
+# Local Netlify folder
+.netlify

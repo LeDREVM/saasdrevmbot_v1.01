@@ -40,7 +40,7 @@ try:
     SIMULATE = False
 except ImportError:
     import sim_mt5 as mt5       # façade compatible mt5
-    SIMULATE = True
+    SIMULATE = False
 
 # --- Trading Bible (source de vérité du scoring) -----------------------------
 try:
