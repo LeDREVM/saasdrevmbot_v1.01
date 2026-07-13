@@ -2,7 +2,7 @@
 # Netlify — saasDrevmBot Frontend (SvelteKit)
 # Seul le frontend SvelteKit est déployé ici.
 # Le backend FastAPI et GoldyXbOT (Express)
-# doivent être hébergés séparément (Railway, Render, VPS).
+# doivent être hébergés séparément (Render, VPS).
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 [build]

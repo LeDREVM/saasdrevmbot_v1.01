@@ -154,6 +154,26 @@ function renderSignals(list) {
   }).join("");
 }
 
+// ── Navigation entre dashboards ─────────────────────────────────────────────--
+function renderDashboards(list) {
+  const nav = $("dash-nav");
+  if (!nav) return;
+  if (!list || !list.length) { nav.innerHTML = ""; return; }
+  nav.innerHTML = list.map((d) => {
+    if (d.current) {
+      return `<span class="dash-link current">${d.icon || "•"} ${d.label}</span>`;
+    }
+    return `<a class="dash-link" href="${d.url}" title="${d.url}">${d.icon || "•"} ${d.label}</a>`;
+  }).join("");
+}
+
+async function loadDashboards() {
+  try {
+    const r = await api("/api/dashboards");
+    renderDashboards(r.dashboards);
+  } catch (e) { /* silencieux : la nav est secondaire */ }
+}
+
 // ── Scan des setups (Wyckoff · FVG · Ichimoku) ──────────────────────────────--
 const PILLARS = [
   { key: "wyckoff", label: "Wyckoff" },
@@ -456,6 +476,7 @@ async function scanPoll() {
 }
 
 wire();
+loadDashboards();
 poll();
 scanPoll();
 setInterval(poll, 2000);

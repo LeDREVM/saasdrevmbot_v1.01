@@ -255,3 +255,17 @@ h2 .subtle { font-size: 11px; font-weight: 400; color: var(--muted); text-transf
 .ai-score { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .ai-reason { font-size: 12px; color: var(--txt); line-height: 1.45; }
 .ai-analysed { font-size: 10px; color: var(--muted); margin-left: auto; }
+
+/* ── Navigation entre dashboards ────────────────────────────────────────────── */
+.dash-nav {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  padding: 8px 20px; background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.dash-link {
+  font-size: 13px; font-weight: 600; text-decoration: none;
+  padding: 5px 12px; border-radius: 7px; border: 1px solid var(--border);
+  color: var(--muted); background: var(--panel-2); transition: all .15s;
+}
+a.dash-link:hover { color: var(--txt); border-color: var(--blue); background: rgba(47,129,247,.12); }
+.dash-link.current { color: #fff; background: var(--green-dim); border-color: var(--green); cursor: default; }

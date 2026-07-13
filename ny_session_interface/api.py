@@ -28,6 +28,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import news
 import setup_validator as validator
 from ny_session_bot import engine, SYMBOLS, get_rates, mt5
 
@@ -79,6 +80,28 @@ def get_signals():
 def get_scan():
     """Confluence courante par symbole (Wyckoff + FVG + Ichimoku), lecture seule."""
     return {"scan": engine.scan_setups()}
+
+
+# ── Navigation multi-dashboards ──────────────────────────────────────────────
+def _dashboards() -> list[dict]:
+    """Liste des dashboards du projet (URLs surchargeables par env)."""
+    return [
+        {"key": "console", "label": "Bot NY Session", "icon": "🦅",
+         "url": os.environ.get("DASH_CONSOLE_URL", f"http://localhost:{PORT}"),
+         "current": True},
+        {"key": "analytics", "label": "Analytics", "icon": "📊",
+         "url": os.environ.get("DASH_ANALYTICS_URL", "http://localhost:5173"),
+         "current": False},
+        {"key": "saas", "label": "SaaS", "icon": "🗂️",
+         "url": os.environ.get("DASH_SAAS_URL", "http://localhost:3000"),
+         "current": False},
+    ]
+
+
+@app.get("/api/dashboards")
+def get_dashboards():
+    """Dashboards du projet + celui courant, pour la barre de navigation."""
+    return {"dashboards": _dashboards()}
 
 
 class AiScanBody(BaseModel):
@@ -161,7 +184,9 @@ def _signal_for(name: str) -> dict | None:
     if df is None or len(df) < 60:
         return {"symbol": name, "available": False}
 
-    v = validator.validate(df, symbol=name, session_active=bool(engine.session_open))
+    nc = news.news_context(name)   # news_score + event_context (calendrier backend)
+    v = validator.validate(df, symbol=name, session_active=bool(engine.session_open),
+                           news_score=nc["news_score"])
     risk_ok = not engine.state.halted and not engine.kill_switch
     filters = {
         "session_ny": bool(engine.session_open),
@@ -173,6 +198,7 @@ def _signal_for(name: str) -> dict | None:
         "symbol": name, "available": True,
         "decision": v.decision, "direction": v.direction, "confidence": v.confidence,
         "scores": v.scores, "filters": filters,
+        "news": {"score": nc["news_score"], "event": nc["event_context"], "source": nc["source"]},
         "executable": bool(v.decision == "EXECUTE" and risk_ok),
     }
 
