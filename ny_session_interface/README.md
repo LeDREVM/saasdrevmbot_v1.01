@@ -47,10 +47,15 @@ fictives, des signaux, l'équité bouger) sans aucun risque.
 1. Copie **ta vraie** `trading_ny_session.py` à la place du placeholder (ou
    rends-la importable via `app.services.trading_ny_session`).
 2. `pip install MetaTrader5` et connecte le terminal Fusion Markets.
-3. Renseigne au besoin `MT5_LOGIN/PASSWORD/SERVER` dans `ny_session_bot.py`.
+3. Identifiants du compte : soit tu laisses le terminal MT5 **déjà ouvert et
+   loggé** (rien à faire), soit tu renseignes `MT5_LOGIN/MT5_PASSWORD/MT5_SERVER`
+   dans le **`.env`** (jamais dans le code — cf. `env.template`).
 4. `python api.py`, puis ouvre la console.
 5. **Reste en DRY RUN** jusqu'à validation, puis bascule en compte démo, et
-   seulement ensuite en live.
+   seulement ensuite en live. Pour armer l'algo full-auto en LIVE de façon
+   permanente (NSSM), mets `DRY_RUN=0` dans le `.env` ; choisis le risque via
+   `BOT_PROFILE` (SCALPING/BALANCED/CONSERVATIVE/AGGRESSIVE). Kill-switch à tout
+   moment : crée le fichier `STOP.flag` à la racine.
 
 ## Stratégie — Smart Money Trading System
 
