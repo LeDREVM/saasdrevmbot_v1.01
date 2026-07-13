@@ -55,7 +55,16 @@ fictives, des signaux, l'équité bouger) sans aucun risque.
    seulement ensuite en live. Pour armer l'algo full-auto en LIVE de façon
    permanente (NSSM), mets `DRY_RUN=0` dans le `.env` ; choisis le risque via
    `BOT_PROFILE` (SCALPING/BALANCED/CONSERVATIVE/AGGRESSIVE). Kill-switch à tout
-   moment : crée le fichier `STOP.flag` à la racine.
+   moment : crée le fichier `STOP.flag` **dans ce dossier** (`ny_session_interface/`,
+   chemin absolu indépendant du cwd ; surchargeable via `KILL_SWITCH_FILE`) — il
+   bloque la boucle auto ET `/api/execute`, même moteur arrêté.
+
+> 🛡️ **Garde-fous P0** : les signaux ne sont évalués que sur **bougie M5
+> clôturée** (no-repaint : bougie en formation exclue + une évaluation par
+> bougie) ; le **halt drawdown journalier** et sa baseline sont **persistés**
+> dans `daily_state.json` — un restart du process ne remet ni le compteur DD à
+> zéro ni un halt actif ; kill-switch et halt DD sont vérifiés aussi dans le
+> chemin API (`/api/execute`), pas seulement dans la boucle.
 
 ## Stratégie — Smart Money Trading System
 
