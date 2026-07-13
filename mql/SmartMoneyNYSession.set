@@ -1,0 +1,36 @@
+; ============================================================================
+;  Preset SmartMoneyNYSession.mq5 — aligné sur le pipeline Python (DREVM)
+;  Charger dans l'EA : onglet "Paramètres" -> "Charger" -> ce fichier .set
+;  (ou dans le Testeur de stratégie -> "Charger").
+;  Les périodes d'indicateurs correspondent aux détecteurs Python
+;  (ny_session_interface : Kijun 26, Wyckoff swing 20, RSI 14, ATR 14, EMA 21/50).
+; ============================================================================
+
+; ── Profil ──  (SCALPING | BALANCED | CONSERVATIVE | AGGRESSIVE)
+InpProfile=SCALPING
+
+; ── Session New York (heure NY) ──
+InpSessStartH=9
+InpSessStartM=30
+InpSessEndH=16
+InpSessEndM=0
+InpCloseAtEnd=true
+
+; ── Symboles ──  (mêmes que SYMBOLS côté console)
+InpSym1=US30
+InpSym2=USDJPY
+InpSpread1=50
+InpSpread2=20
+
+; ── Indicateurs (identiques aux détecteurs Python) ──
+InpEMA21=21
+InpEMA50=50
+InpRSIPeriod=14
+InpATRPeriod=14
+InpKijunPeriod=26
+InpWyckLookback=20
+InpWyckVolMult=1.5
+
+; ── Alertes ──
+InpAlerts=true
+InpPush=false
