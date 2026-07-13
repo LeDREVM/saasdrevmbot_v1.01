@@ -44,9 +44,9 @@
   
   onMount(fetchCalendar);
   
-  // Stats rapides
-  $: highImpactCount = events.filter(e => e.impact === 'High').length;
-  $: mediumImpactCount = events.filter(e => e.impact === 'Medium').length;
+  // Stats rapides (l'API renvoie l'impact en minuscules)
+  $: highImpactCount = events.filter(e => e.impact === 'high').length;
+  $: mediumImpactCount = events.filter(e => e.impact === 'medium').length;
 </script>
 
 <svelte:head>
