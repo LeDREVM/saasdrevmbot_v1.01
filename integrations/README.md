@@ -35,9 +35,9 @@ le seul maillon vraiment complémentaire : il lit l'OHLC MT5 (M5, 100 bougies,
 7 symboles) et le pousse toutes les 5 min vers une API. C'est la brique
 **« MT5 Data Collector »** de l'architecture cible.
 
-**À adapter** : la constante `CONFIG['api_url']` pointe vers une URL externe
-(`https://deuxy.xyz/...`) — la rediriger vers ta collecte (ex. un endpoint de la
-console). Le reste du dépôt `goldrogers-trading-bot` (indicateurs Wyckoff/
+**À configurer** : l'URL de collecte se définit via la variable d'environnement
+`MARKET_DATA_API_URL` (ex. `http://localhost:8800/api/market-data`). Sans elle, le
+script s'arrête avec un message. Le reste du dépôt `goldrogers-trading-bot` (indicateurs Wyckoff/
 Ichimoku/RSI, bots, dashboards) **duplique** ce que le pipeline `ny_session_interface`
 fait déjà en plus propre → volontairement **non importé**.
 

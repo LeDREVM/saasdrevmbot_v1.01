@@ -13,7 +13,7 @@ CONFIG = {
     'timeframe': mt5.TIMEFRAME_M5,
     'bars': 100,
     'send_interval': 300,  # 5 minutes
-    'api_url': 'https://deuxy.xyz/api/market-data',
+    'api_url': os.environ.get('MARKET_DATA_API_URL', ''),  # ex: http://localhost:8800/api/market-data
 }
 
 def initialize_mt5():
@@ -107,9 +107,9 @@ def main():
     print()
     
     # Vérifier si l'URL de l'API a été configurée
-    if CONFIG['api_url'] == 'https://votre-app-heroku.herokuapp.com/api/market-data':
-        print("❌ ERREUR: Veuillez configurer l'URL de votre API Heroku dans le fichier.")
-        print("Modifiez la valeur de 'api_url' dans la configuration.")
+    if not CONFIG['api_url']:
+        print("❌ ERREUR: définissez la variable d'environnement MARKET_DATA_API_URL")
+        print("   (ex: MARKET_DATA_API_URL=http://localhost:8800/api/market-data)")
         return
     
     if not initialize_mt5():
