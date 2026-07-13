@@ -30,6 +30,7 @@ from pydantic import BaseModel
 
 import news
 import setup_validator as validator
+import trade_journal
 from ny_session_bot import engine, SYMBOLS, get_rates, mt5
 
 API_TOKEN = os.environ.get("API_TOKEN")  # facultatif : protège les commandes
@@ -80,6 +81,37 @@ def get_signals():
 def get_scan():
     """Confluence courante par symbole (Wyckoff + FVG + Ichimoku), lecture seule."""
     return {"scan": engine.scan_setups()}
+
+
+# ── Réception des données MT5 poussées par le pont (mt5_data_sender.py) ───────
+# Store en mémoire des dernières bougies par symbole (source alternative quand
+# le terminal MT5 tourne sur un VPS séparé qui POST vers MARKET_DATA_API_URL).
+_market_data: dict[str, dict] = {}
+
+
+class MarketDataBody(BaseModel):
+    symbol: str
+    candles: list[dict]
+
+
+@app.post("/api/market-data")
+def post_market_data(body: MarketDataBody):
+    """Reçoit {symbol, candles:[{time,open,high,low,close,volume}]} du pont MT5."""
+    _market_data[body.symbol] = {
+        "candles": body.candles,
+        "count": len(body.candles),
+        "received_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    return {"ok": True, "symbol": body.symbol, "count": len(body.candles)}
+
+
+@app.get("/api/market-data")
+def get_market_data(symbol: str | None = None):
+    """État des données MT5 reçues (monitoring). ?symbol=XAUUSD pour les bougies."""
+    if symbol:
+        return _market_data.get(symbol, {"count": 0, "candles": []})
+    return {"symbols": {s: {"count": d["count"], "received_at": d["received_at"]}
+                        for s, d in _market_data.items()}}
 
 
 # ── Navigation multi-dashboards ──────────────────────────────────────────────
@@ -248,7 +280,14 @@ def execute(body: ExecuteBody, x_api_token: str | None = Header(default=None)):
     res = engine.execute_signal(body.symbol, direction, source="n8n")
     if not res.get("ok"):
         raise HTTPException(status_code=409, detail=res.get("reason", "exécution refusée"))
-    return {"ok": True, "executed": res, "signal": sig}
+
+    # Auto-journalisation Supabase (best-effort, n'échoue jamais l'exécution).
+    order = res.get("order", {})
+    journal = trade_journal.record_trade(
+        body.symbol, direction, entry=order.get("entry"), sl=order.get("sl"),
+        tp=order.get("tp"), notes=f"auto/n8n · confiance {sig.get('confidence')}%")
+
+    return {"ok": True, "executed": res, "signal": sig, "journal": journal}
 
 
 @app.get("/api/logs")

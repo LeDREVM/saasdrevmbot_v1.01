@@ -19,9 +19,19 @@ Scrape et agrège, puis envoie des alertes Telegram :
 Lancement :
 ```bash
 cd integrations/goldyxrogers-scraper
-cp .env.example .env      # renseigner Telegram + Twelve Data
+cp .env.example .env      # au minimum TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID
 npm install && npm start
 ```
+
+Au démarrage il affiche sa bannière, désactive proprement ce qui n'est pas
+configuré (Twelve Data, Nextcloud), puis exige `TELEGRAM_BOT_TOKEN` pour lancer
+le bot. Il récupère ensuite le calendrier ForexFactory
+(`nfs.faireconomy.media`) — accès Internet direct requis.
+
+> ⚠️ Deps upstream : ce scraper tiers dépend de `node-telegram-bot-api` /
+> `node-cron` qui tirent des paquets avec vulnérabilités connues (`request`,
+> `ws`…) sans release corrigée. `node_modules/` n'est pas versionné ; à isoler
+> (conteneur dédié) si tu l'exposes.
 
 **Branchement pipeline** : ce scraper fournit le **contexte news / événements**
 qui alimente le `news_score` et l'`event_context` de l'AI Setup Validator
@@ -35,9 +45,11 @@ le seul maillon vraiment complémentaire : il lit l'OHLC MT5 (M5, 100 bougies,
 7 symboles) et le pousse toutes les 5 min vers une API. C'est la brique
 **« MT5 Data Collector »** de l'architecture cible.
 
-**À adapter** : la constante `CONFIG['api_url']` pointe vers une URL externe
-(`https://deuxy.xyz/...`) — la rediriger vers ta collecte (ex. un endpoint de la
-console). Le reste du dépôt `goldrogers-trading-bot` (indicateurs Wyckoff/
+**Branchement** : définir `MARKET_DATA_API_URL` sur l'endpoint récepteur de la
+console — `http://<console>:8800/api/market-data` (implémenté dans
+`ny_session_interface/api.py`, qui stocke les dernières bougies par symbole et
+les expose en `GET /api/market-data` pour le monitoring). Sans la variable, le
+script s'arrête avec un message. Le reste du dépôt `goldrogers-trading-bot` (indicateurs Wyckoff/
 Ichimoku/RSI, bots, dashboards) **duplique** ce que le pipeline `ny_session_interface`
 fait déjà en plus propre → volontairement **non importé**.
 
