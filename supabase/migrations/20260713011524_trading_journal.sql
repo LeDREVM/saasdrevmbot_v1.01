@@ -20,7 +20,10 @@ DO $$ BEGIN
     CREATE TYPE trade_result AS ENUM ('win', 'loss', 'breakeven', 'running');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
--- (event_impact 'low'|'medium'|'high' existe déjà dans le schéma de base)
+-- event_impact peut déjà exister (schéma de base) ; sinon on le crée.
+DO $$ BEGIN
+    CREATE TYPE event_impact AS ENUM ('low', 'medium', 'high');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- Fonction updated_at (réutilise celle du schéma de base ; recréée pour être autonome)
 CREATE OR REPLACE FUNCTION public.update_updated_at_column()
@@ -29,12 +32,12 @@ BEGIN
     NEW.updated_at = NOW();
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = '';
 
 -- ── journal_trades ───────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.journal_trades (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id      UUID NOT NULL REFERENCES public.user_profiles(id) ON DELETE CASCADE,
+    user_id      UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     trade_date   DATE NOT NULL DEFAULT CURRENT_DATE,
     symbol       TEXT NOT NULL,
     direction    trade_direction NOT NULL,
@@ -54,7 +57,7 @@ CREATE INDEX IF NOT EXISTS idx_journal_trades_symbol ON public.journal_trades(sy
 -- ── journal_sessions ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.journal_sessions (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id      UUID NOT NULL REFERENCES public.user_profiles(id) ON DELETE CASCADE,
+    user_id      UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     session_date DATE NOT NULL DEFAULT CURRENT_DATE,
     bias         TEXT,           -- biais du jour (ex: bullish / bearish / neutral)
     news         TEXT,           -- news / événements à surveiller
@@ -68,7 +71,7 @@ CREATE INDEX IF NOT EXISTS idx_journal_sessions_user ON public.journal_sessions(
 -- ── journal_rules (1 ligne par utilisateur) ─────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.journal_rules (
     id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id               UUID NOT NULL UNIQUE REFERENCES public.user_profiles(id) ON DELETE CASCADE,
+    user_id               UUID NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
     risk_per_day_pct      NUMERIC(5, 2) NOT NULL DEFAULT 3.00,   -- risque max / jour (%)
     max_trades_per_day    INTEGER NOT NULL DEFAULT 3,
     drawdown_lock_pct     NUMERIC(5, 2) NOT NULL DEFAULT 4.00,   -- DD journalier qui verrouille
@@ -81,7 +84,7 @@ CREATE TABLE IF NOT EXISTS public.journal_rules (
 -- ── journal_alerts ───────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.journal_alerts (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id      UUID NOT NULL REFERENCES public.user_profiles(id) ON DELETE CASCADE,
+    user_id      UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     event        TEXT NOT NULL,          -- nom de l'événement
     impact       event_impact NOT NULL DEFAULT 'medium',
     alert_time   TIMESTAMPTZ NOT NULL,   -- heure de l'événement
