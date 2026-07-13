@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -113,6 +113,23 @@ def _load_ohlc(name: str, cfg: dict):
 STATIC_DIR = Path(__file__).parent / "static"
 
 app = FastAPI(title="NY Session Bot — Console", version="1.0")
+
+# REQUIRE_TOKEN=1 → TOUTES les routes /api/* exigent X-Api-Token (pas seulement
+# les POST). OBLIGATOIRE avant toute exposition publique (proxy Netlify, tunnel) :
+# sinon équité, positions et logs seraient lisibles par n'importe qui.
+REQUIRE_TOKEN = os.environ.get("REQUIRE_TOKEN", "0") == "1"
+
+
+@app.middleware("http")
+async def _token_guard(request, call_next):
+    if REQUIRE_TOKEN and request.url.path.startswith("/api/"):
+        if not API_TOKEN:
+            return JSONResponse(status_code=503, content={
+                "detail": "REQUIRE_TOKEN=1 mais API_TOKEN non défini — accès bloqué."})
+        if request.headers.get("x-api-token") != API_TOKEN:
+            return JSONResponse(status_code=401, content={
+                "detail": "Token requis (X-Api-Token) — saisis-le dans le champ « API token » de la console."})
+    return await call_next(request)
 
 
 def _check_token(token: str | None):

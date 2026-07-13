@@ -4,11 +4,19 @@
 const $ = (id) => document.getElementById(id);
 const token = () => localStorage.getItem("ny_token") || "";
 
+// Base d'URL : "/" en direct (:8800), "/bot/" derrière le proxy Netlify.
+// Rend tous les appels /api/* relatifs au chemin où la console est servie.
+const API_BASE = location.pathname.endsWith("/")
+  ? location.pathname
+  : location.pathname.replace(/[^/]*$/, "");
+
 async function api(path, method = "GET", body = null) {
   const opts = { method, headers: {} };
   if (body) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
-  if (method !== "GET") opts.headers["X-Api-Token"] = token();
-  const r = await fetch(path, opts);
+  // Token sur TOUTES les requêtes : en mode REQUIRE_TOKEN (exposition publique
+  // via Netlify/tunnel), les GET aussi sont protégés.
+  if (token()) opts.headers["X-Api-Token"] = token();
+  const r = await fetch(API_BASE + path.replace(/^\//, ""), opts);
   if (!r.ok) {
     const detail = await r.json().catch(() => ({}));
     throw new Error(detail.detail || `HTTP ${r.status}`);
