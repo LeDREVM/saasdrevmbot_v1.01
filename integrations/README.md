@@ -19,9 +19,19 @@ Scrape et agrège, puis envoie des alertes Telegram :
 Lancement :
 ```bash
 cd integrations/goldyxrogers-scraper
-cp .env.example .env      # renseigner Telegram + Twelve Data
+cp .env.example .env      # au minimum TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID
 npm install && npm start
 ```
+
+Au démarrage il affiche sa bannière, désactive proprement ce qui n'est pas
+configuré (Twelve Data, Nextcloud), puis exige `TELEGRAM_BOT_TOKEN` pour lancer
+le bot. Il récupère ensuite le calendrier ForexFactory
+(`nfs.faireconomy.media`) — accès Internet direct requis.
+
+> ⚠️ Deps upstream : ce scraper tiers dépend de `node-telegram-bot-api` /
+> `node-cron` qui tirent des paquets avec vulnérabilités connues (`request`,
+> `ws`…) sans release corrigée. `node_modules/` n'est pas versionné ; à isoler
+> (conteneur dédié) si tu l'exposes.
 
 **Branchement pipeline** : ce scraper fournit le **contexte news / événements**
 qui alimente le `news_score` et l'`event_context` de l'AI Setup Validator
