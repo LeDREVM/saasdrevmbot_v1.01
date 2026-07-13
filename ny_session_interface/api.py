@@ -28,7 +28,11 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import time
+
+import alphavantage
 import news
+import ny_session_bot as nsb
 import setup_validator as validator
 import trade_journal
 import twelvedata
@@ -42,20 +46,69 @@ BACKEND_URL = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
 # Exécution d'ordres via /api/execute : DÉSACTIVÉE par défaut (garde-fou).
 ALLOW_EXECUTION = os.environ.get("ALLOW_EXECUTION", "0") == "1"
 SIGNAL_BARS = 250
-# Source de prix du validator : "mt5" (défaut) ou "twelvedata".
+# Source(s) de prix : "mt5" (défaut) ou une CASCADE ordonnée séparée par des
+# virgules, ex. "twelvedata,alphavantage,mt5". Les sources externes sont
+# fournies au moteur via un price provider (get_rates), donc le SCAN et le
+# SIGNAL cascadent tous deux ; MT5/sim reste le filet final. Cache TTL pour
+# borner les appels API (rate-limits).
 PRICE_SOURCE = os.environ.get("PRICE_SOURCE", "mt5").lower()
+_PRICE_CACHE_TTL = int(os.environ.get("PRICE_CACHE_TTL", "60"))
+_TF_INTERVAL = {mt5.TIMEFRAME_M5: "5min", mt5.TIMEFRAME_M15: "15min", mt5.TIMEFRAME_H4: "4h"}
+_candle_cache: dict = {}   # (src, symbol, interval) -> (ts, df|None)
+
+
+def _mt5_label() -> str:
+    return "sim" if engine.simulate else "mt5"
+
+
+def _external_sources() -> list[str]:
+    return [s.strip() for s in PRICE_SOURCE.split(",")
+            if s.strip() in ("twelvedata", "alphavantage")]
+
+
+def _cached_candles(src: str, symbol: str, interval: str, n: int):
+    key = (src, symbol, interval)
+    now = time.time()
+    hit = _candle_cache.get(key)
+    if hit and now - hit[0] < _PRICE_CACHE_TTL:
+        return hit[1]
+    df = None
+    if src == "twelvedata" and twelvedata.enabled():
+        df = twelvedata.get_candles(symbol, interval, max(n, 250))
+    elif src == "alphavantage" and alphavantage.enabled():
+        df = alphavantage.get_candles(symbol, interval, max(n, 250))
+    _candle_cache[key] = (now, df)
+    return df
+
+
+def _cascade_provider(symbol: str, timeframe: int, n: int):
+    """Price provider (branché sur get_rates) : bougies natives par timeframe
+    depuis les sources externes en cascade. None → get_rates retombe sur MT5."""
+    interval = _TF_INTERVAL.get(timeframe)
+    if interval is None:
+        return None
+    for src in _external_sources():
+        df = _cached_candles(src, symbol, interval, n)
+        if df is not None and len(df) >= 40:
+            if timeframe == mt5.TIMEFRAME_M5:
+                nsb.last_price_source[symbol] = src
+            return df.tail(n).reset_index(drop=True)
+    return None
+
+
+# Enregistre le provider si une source externe est configurée (scan + signal).
+if _external_sources():
+    nsb.set_price_provider(_cascade_provider)
 
 
 def _load_ohlc(name: str, cfg: dict):
-    """Charge les bougies M5 d'un symbole. Renvoie (df, source). Twelve Data si
-    PRICE_SOURCE=twelvedata + clé dispo, sinon MT5/sim (avec fallback)."""
-    if PRICE_SOURCE == "twelvedata" and twelvedata.enabled():
-        df = twelvedata.get_candles(name, interval="5min", outputsize=SIGNAL_BARS)
-        if df is not None and len(df) >= 60:
-            return df, "twelvedata"
+    """Bougies M5 via get_rates (donc cascade si provider actif). Renvoie (df, source)."""
     with engine._mt5_lock:
         df = get_rates(cfg["mt5_symbol"], mt5.TIMEFRAME_M5, SIGNAL_BARS)
-    return df, ("sim" if engine.simulate else "mt5")
+    src = nsb.last_price_source.get(cfg["mt5_symbol"], _mt5_label())
+    if df is None or len(df) < 60:
+        return None, src
+    return df, src
 
 STATIC_DIR = Path(__file__).parent / "static"
 

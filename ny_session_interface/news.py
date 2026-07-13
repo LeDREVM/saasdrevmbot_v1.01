@@ -23,7 +23,11 @@ from datetime import datetime
 
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
 NEWS_WINDOW_HOURS = int(os.environ.get("NEWS_WINDOW_HOURS", "2"))
-_TTL_SECONDS = 120  # cache : évite de frapper le backend à chaque /api/signal
+_TTL_SECONDS = 120  # cache : évite de frapper la source à chaque /api/signal
+# Source du calendrier : "backend" (défaut, ForexFactory/Investing via FastAPI)
+# ou "mt5" (fichier JSON exporté par mql/CalendarExporter.mq5).
+NEWS_SOURCE = os.environ.get("NEWS_SOURCE", "backend").lower()
+MT5_CALENDAR_FILE = os.environ.get("MT5_CALENDAR_FILE", "")
 
 # Devises pertinentes par symbole (pour filtrer les annonces).
 SYMBOL_CURRENCIES = {
@@ -49,12 +53,29 @@ def _fetch_upcoming(hours: int) -> tuple[list, str | None]:
         return [], str(exc)
 
 
+def _load_mt5_calendar() -> tuple[list, str | None]:
+    """Lit le JSON exporté par mql/CalendarExporter.mq5 (NEWS_SOURCE=mt5)."""
+    if not MT5_CALENDAR_FILE:
+        return [], "MT5_CALENDAR_FILE non défini"
+    if not os.path.exists(MT5_CALENDAR_FILE):
+        return [], f"fichier absent ({MT5_CALENDAR_FILE})"
+    try:
+        with open(MT5_CALENDAR_FILE, encoding="utf-8") as fh:
+            events = json.load(fh)
+        return (events if isinstance(events, list) else []), None
+    except (OSError, ValueError) as exc:
+        return [], str(exc)
+
+
 def upcoming_events(force: bool = False) -> tuple[list, str | None]:
-    """Événements high-impact à venir (cache TTL)."""
+    """Événements à venir (cache TTL). Source selon NEWS_SOURCE."""
     now = time.time()
     if not force and (now - _CACHE["ts"]) < _TTL_SECONDS:
         return _CACHE["events"], _CACHE["error"]
-    events, err = _fetch_upcoming(NEWS_WINDOW_HOURS)
+    if NEWS_SOURCE == "mt5":
+        events, err = _load_mt5_calendar()
+    else:
+        events, err = _fetch_upcoming(NEWS_WINDOW_HOURS)
     _CACHE.update(ts=now, events=events, error=err)
     return events, err
 
@@ -81,7 +102,7 @@ def news_context(symbol: str) -> dict:
     ]
     if not matches:
         return {"news_score": 100.0, "event_context": None,
-                "source": "unavailable" if err else "backend", "error": err}
+                "source": "unavailable" if err else NEWS_SOURCE, "error": err}
 
     matches.sort(key=lambda e: (_minutes_until(e) if _minutes_until(e) is not None else 1e9))
     ev = matches[0]
@@ -102,5 +123,5 @@ def news_context(symbol: str) -> dict:
             "impact": ev.get("impact"),
             "minutes_until": round(mins) if mins is not None else None,
         },
-        "source": "backend", "error": None,
+        "source": NEWS_SOURCE, "error": None,
     }
