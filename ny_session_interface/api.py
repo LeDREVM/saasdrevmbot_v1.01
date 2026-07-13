@@ -28,6 +28,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import alphavantage
 import news
 import setup_validator as validator
 import trade_journal
@@ -53,6 +54,10 @@ def _load_ohlc(name: str, cfg: dict):
         df = twelvedata.get_candles(name, interval="5min", outputsize=SIGNAL_BARS)
         if df is not None and len(df) >= 60:
             return df, "twelvedata"
+    elif PRICE_SOURCE == "alphavantage" and alphavantage.enabled():
+        df = alphavantage.get_candles(name, interval="5min", outputsize=SIGNAL_BARS)
+        if df is not None and len(df) >= 60:
+            return df, "alphavantage"
     with engine._mt5_lock:
         df = get_rates(cfg["mt5_symbol"], mt5.TIMEFRAME_M5, SIGNAL_BARS)
     return df, ("sim" if engine.simulate else "mt5")
