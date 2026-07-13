@@ -3,10 +3,33 @@
     
     /** @type {any} */
     export let settings;
-    
+
     const dispatch = createEventDispatcher();
-    
-    let localSettings = { ...settings };
+
+    // Squelette complet : garantit que TOUS les champs imbriqués existent, même
+    // si `settings` est null/partiel (ex. backend d'alertes injoignable en prod).
+    // Sans ça, `{...null}` = {} et `localSettings.channels.discord` plantait le
+    // rendu → toute la page Alertes devenait inerte (onglets bloqués).
+    const DEFAULTS = {
+      watched_symbols: [],
+      alert_levels: { extreme: true, high: true, medium: false },
+      channels: { discord: false, telegram: false },
+      custom_webhooks: { discord: '' },
+      quiet_hours: { enabled: false, start: '22:00', end: '07:00' },
+      advanced: { advance_notice_hours: 2, min_expected_pips: 10, require_high_confidence: false },
+    };
+    /** @param {any} d @param {any} s */
+    const merge = (d, s) => {
+      const out = Array.isArray(d) ? [...d] : { ...d };
+      if (s && typeof s === 'object' && !Array.isArray(s)) {
+        for (const k of Object.keys(d)) {
+          out[k] = (d[k] && typeof d[k] === 'object' && !Array.isArray(d[k]))
+            ? merge(d[k], s[k]) : (s[k] !== undefined ? s[k] : d[k]);
+        }
+      }
+      return out;
+    };
+    let localSettings = merge(DEFAULTS, settings);
     
     const availableSymbols = [
       { value: 'EURUSD', label: 'EUR/USD 💶' },
