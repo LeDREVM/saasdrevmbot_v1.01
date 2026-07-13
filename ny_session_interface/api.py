@@ -31,6 +31,7 @@ from pydantic import BaseModel
 import news
 import setup_validator as validator
 import trade_journal
+import twelvedata
 from ny_session_bot import engine, SYMBOLS, get_rates, mt5
 
 API_TOKEN = os.environ.get("API_TOKEN")  # facultatif : protège les commandes
@@ -41,6 +42,20 @@ BACKEND_URL = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
 # Exécution d'ordres via /api/execute : DÉSACTIVÉE par défaut (garde-fou).
 ALLOW_EXECUTION = os.environ.get("ALLOW_EXECUTION", "0") == "1"
 SIGNAL_BARS = 250
+# Source de prix du validator : "mt5" (défaut) ou "twelvedata".
+PRICE_SOURCE = os.environ.get("PRICE_SOURCE", "mt5").lower()
+
+
+def _load_ohlc(name: str, cfg: dict):
+    """Charge les bougies M5 d'un symbole. Renvoie (df, source). Twelve Data si
+    PRICE_SOURCE=twelvedata + clé dispo, sinon MT5/sim (avec fallback)."""
+    if PRICE_SOURCE == "twelvedata" and twelvedata.enabled():
+        df = twelvedata.get_candles(name, interval="5min", outputsize=SIGNAL_BARS)
+        if df is not None and len(df) >= 60:
+            return df, "twelvedata"
+    with engine._mt5_lock:
+        df = get_rates(cfg["mt5_symbol"], mt5.TIMEFRAME_M5, SIGNAL_BARS)
+    return df, ("sim" if engine.simulate else "mt5")
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -211,10 +226,9 @@ def _signal_for(name: str) -> dict | None:
     cfg = SYMBOLS.get(name)
     if cfg is None:
         return None
-    with engine._mt5_lock:
-        df = get_rates(cfg["mt5_symbol"], mt5.TIMEFRAME_M5, SIGNAL_BARS)
+    df, source = _load_ohlc(name, cfg)
     if df is None or len(df) < 60:
-        return {"symbol": name, "available": False}
+        return {"symbol": name, "available": False, "source": source}
 
     nc = news.news_context(name)   # news_score + event_context (calendrier backend)
     v = validator.validate(df, symbol=name, session_active=bool(engine.session_open),
@@ -231,6 +245,7 @@ def _signal_for(name: str) -> dict | None:
         "decision": v.decision, "direction": v.direction, "confidence": v.confidence,
         "scores": v.scores, "filters": filters,
         "news": {"score": nc["news_score"], "event": nc["event_context"], "source": nc["source"]},
+        "price_source": source,
         "executable": bool(v.decision == "EXECUTE" and risk_ok),
     }
 
