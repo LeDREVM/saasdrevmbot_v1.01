@@ -8,10 +8,15 @@ import os
 import sys
 
 # Configuration
+# On envoie les 3 timeframes dont le moteur a besoin (build_context : H4/M15/M5)
+# pour que le dashboard cloud/Linux tourne 100 % sur les vraies bougies MT5.
 CONFIG = {
     'symbols': ['XAUUSD', 'EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'US30', 'XBRUSD'],
-    'timeframe': mt5.TIMEFRAME_M5,
-    'bars': 100,
+    'timeframes': [
+        (mt5.TIMEFRAME_H4, 'H4', 150),
+        (mt5.TIMEFRAME_M15, 'M15', 200),
+        (mt5.TIMEFRAME_M5, 'M5', 250),
+    ],
     'send_interval': 300,  # 5 minutes
     'api_url': os.environ.get('MARKET_DATA_API_URL', ''),  # ex: http://localhost:8800/api/market-data
 }
@@ -64,21 +69,22 @@ def get_market_data(symbol, timeframe, bars):
         
     return candles
 
-def send_data_to_api(symbol, candles):
+def send_data_to_api(symbol, candles, timeframe='M5'):
     payload = {
         'symbol': symbol,
+        'timeframe': timeframe,
         'candles': candles
     }
-    
+
     try:
         response = requests.post(
-            CONFIG['api_url'], 
+            CONFIG['api_url'],
             json=payload,
             headers={'Content-Type': 'application/json'}
         )
-        
+
         if response.status_code == 200:
-            print(f"✅ Données pour {symbol} envoyées avec succès ({len(candles)} bougies)")
+            print(f"✅ {symbol} {timeframe} envoyé ({len(candles)} bougies)")
             return True
         else:
             print(f"❌ Erreur lors de l'envoi des données pour {symbol}: {response.status_code}")
@@ -97,7 +103,7 @@ def main():
 ██╔══██╗██║   ██║   ██║          ██║   ██╔══██╗██╔══██║██║  ██║██║██║╚██╗██║██║   ██║
 ██████╔╝╚██████╔╝   ██║          ██║   ██║  ██║██║  ██║██████╔╝██║██║ ╚████║╚██████╔╝
 ╚═════╝  ╚═════╝    ╚═╝          ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝ 
-                           ENVOYEUR DE DONNÉES VERS HEROKU
+              PONT MT5 → CONSOLE DREVM (/api/market-data)
     """)
     
     print("Configuration:")
@@ -120,11 +126,12 @@ def main():
         while True:
             print(f"\n=== {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===")
             for symbol in CONFIG['symbols']:
-                candles = get_market_data(symbol, CONFIG['timeframe'], CONFIG['bars'])
-                if candles:
-                    send_data_to_api(symbol, candles)
-                else:
-                    print(f"❌ Impossible de récupérer les données pour {symbol}")
+                for tf_const, tf_name, bars in CONFIG['timeframes']:
+                    candles = get_market_data(symbol, tf_const, bars)
+                    if candles:
+                        send_data_to_api(symbol, candles, tf_name)
+                    else:
+                        print(f"❌ Données indisponibles : {symbol} {tf_name}")
             
             print(f"Attente de {CONFIG['send_interval']} secondes avant le prochain envoi...")
             time.sleep(CONFIG['send_interval'])

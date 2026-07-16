@@ -41,17 +41,40 @@ qui alimente le `news_score` et l'`event_context` de l'AI Setup Validator
 ## `goldrogers-mt5/` — pont MT5 (Python)
 
 Récupéré de **`LeDREVM/goldrogers-trading-bot`** (`scripts/mt5_data_sender.py`) —
-le seul maillon vraiment complémentaire : il lit l'OHLC MT5 (M5, 100 bougies,
-7 symboles) et le pousse toutes les 5 min vers une API. C'est la brique
+le seul maillon vraiment complémentaire : il lit l'OHLC MT5 (**H4 + M15 + M5**,
+7 symboles) et le pousse toutes les 5 min vers la console. C'est la brique
 **« MT5 Data Collector »** de l'architecture cible.
 
-**Branchement** : définir `MARKET_DATA_API_URL` sur l'endpoint récepteur de la
-console — `http://<console>:8800/api/market-data` (implémenté dans
-`ny_session_interface/api.py`, qui stocke les dernières bougies par symbole et
-les expose en `GET /api/market-data` pour le monitoring). Sans la variable, le
-script s'arrête avec un message. Le reste du dépôt `goldrogers-trading-bot` (indicateurs Wyckoff/
-Ichimoku/RSI, bots, dashboards) **duplique** ce que le pipeline `ny_session_interface`
-fait déjà en plus propre → volontairement **non importé**.
+### Accès au dashboard depuis Linux/cloud (le paquet `MetaTrader5` est Windows-only)
+
+Le pont permet à la console — hébergée sur **Linux/cloud**, où `MetaTrader5`
+n'existe pas — de tourner sur les **vraies bougies MT5**. Flux complet :
+
+```
+VPS Windows (MT5 + terminal ouvert)          Console Linux/cloud
+  mt5_data_sender.py  ──POST /api/market-data──▶  _market_data (par TF)
+     (H4/M15/M5)                                        │
+                                                        ▼  PRICE_SOURCE=mt5bridge
+                                          get_rates → provider "mt5bridge"
+                                          → scan + signal sur données MT5 réelles
+```
+
+**Branchement (2 côtés) :**
+1. **VPS Windows** : `MARKET_DATA_API_URL=http://<console>:8800/api/market-data`
+   puis `python mt5_data_sender.py` (envoie les 3 timeframes, taggés `timeframe`).
+2. **Console** : `PRICE_SOURCE=mt5bridge` (ou en cascade, ex.
+   `mt5bridge,twelvedata`). Le moteur consomme alors les bougies du pont ;
+   `GET /api/market-data` expose l'état (timeframes reçus, `received_at`) pour le
+   monitoring.
+
+> ⚠️ Le pont fournit les **PRIX** (scan/signal/analyse). Le **compte, les
+> positions et l'exécution d'ordres** restent côté Windows (terminal MT5) — la
+> console en cloud reste en `SIMULATION` pour ces aspects tant qu'elle n'a pas
+> de terminal MT5 local. (Extension possible : pousser aussi compte/positions.)
+
+Le reste du dépôt `goldrogers-trading-bot` (indicateurs Wyckoff/Ichimoku/RSI,
+bots, dashboards) **duplique** ce que le pipeline `ny_session_interface` fait déjà
+en plus propre → volontairement **non importé**.
 
 ## Ce qui a été volontairement EXCLU
 - 🔒 `docs/Storj-S3-Credentials-*.txt` de `goldrogers-trading-bot` (**credentials en

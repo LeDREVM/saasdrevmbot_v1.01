@@ -30,6 +30,8 @@ from pydantic import BaseModel
 
 import time
 
+import pandas as pd
+
 import alphavantage
 import news
 import ny_session_bot as nsb
@@ -55,6 +57,14 @@ PRICE_SOURCE = os.environ.get("PRICE_SOURCE", "mt5").lower()
 _PRICE_CACHE_TTL = int(os.environ.get("PRICE_CACHE_TTL", "60"))
 _TF_INTERVAL = {mt5.TIMEFRAME_M5: "5min", mt5.TIMEFRAME_M15: "15min", mt5.TIMEFRAME_H4: "4h"}
 _candle_cache: dict = {}   # (src, symbol, interval) -> (ts, df|None)
+# Sources externes reconnues dans PRICE_SOURCE (cascade ordonnée).
+_KNOWN_SOURCES = ("mt5bridge", "twelvedata", "alphavantage")
+
+# Store en mémoire des bougies poussées par le pont MT5 (mt5_data_sender.py sur
+# le VPS Windows). Structure : {symbol: {timeframe_const: {candles, count, ...}}}.
+# Permet à un dashboard hébergé sur Linux/cloud d'utiliser les VRAIES bougies MT5
+# comme source de prix (le paquet MetaTrader5 étant Windows-only).
+_market_data: dict[str, dict] = {}
 
 
 def _mt5_label() -> str:
@@ -62,8 +72,7 @@ def _mt5_label() -> str:
 
 
 def _external_sources() -> list[str]:
-    return [s.strip() for s in PRICE_SOURCE.split(",")
-            if s.strip() in ("twelvedata", "alphavantage")]
+    return [s.strip() for s in PRICE_SOURCE.split(",") if s.strip() in _KNOWN_SOURCES]
 
 
 def _cached_candles(src: str, symbol: str, interval: str, n: int):
@@ -81,14 +90,32 @@ def _cached_candles(src: str, symbol: str, interval: str, n: int):
     return df
 
 
-def _cascade_provider(symbol: str, timeframe: int, n: int):
-    """Price provider (branché sur get_rates) : bougies natives par timeframe
-    depuis les sources externes en cascade. None → get_rates retombe sur MT5."""
-    interval = _TF_INTERVAL.get(timeframe)
-    if interval is None:
+def _bridge_candles(symbol: str, timeframe: int, n: int):
+    """Bougies poussées par le pont MT5 pour ce (symbole, timeframe). Convertit
+    le payload JSON du feeder en DataFrame compatible get_rates. None si absent."""
+    entry = _market_data.get(symbol, {}).get(timeframe)
+    if not entry or not entry.get("candles"):
         return None
+    df = pd.DataFrame(entry["candles"])
+    if not {"open", "high", "low", "close"}.issubset(df.columns) or len(df) < 40:
+        return None
+    if "time" in df.columns:
+        df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
+    if "volume" not in df.columns and "tick_volume" in df.columns:
+        df["volume"] = df["tick_volume"]
+    return df
+
+
+def _cascade_provider(symbol: str, timeframe: int, n: int):
+    """Price provider (branché sur get_rates) : bougies natives par timeframe,
+    en cascade selon l'ordre de PRICE_SOURCE (pont MT5, Twelve Data, Alpha
+    Vantage). None → get_rates retombe sur MT5/sim (filet final)."""
     for src in _external_sources():
-        df = _cached_candles(src, symbol, interval, n)
+        if src == "mt5bridge":
+            df = _bridge_candles(symbol, timeframe, n)
+        else:
+            interval = _TF_INTERVAL.get(timeframe)
+            df = _cached_candles(src, symbol, interval, n) if interval else None
         if df is not None and len(df) >= 40:
             if timeframe == mt5.TIMEFRAME_M5:
                 nsb.last_price_source[symbol] = src
@@ -169,34 +196,43 @@ def get_scan():
 
 
 # ── Réception des données MT5 poussées par le pont (mt5_data_sender.py) ───────
-# Store en mémoire des dernières bougies par symbole (source alternative quand
-# le terminal MT5 tourne sur un VPS séparé qui POST vers MARKET_DATA_API_URL).
-_market_data: dict[str, dict] = {}
+# Le feeder (VPS Windows) POST une fois par timeframe ; branché comme source de
+# prix "mt5bridge" (cf. _bridge_candles). `_market_data` est défini plus haut.
+_TF_NAME = {"H4": mt5.TIMEFRAME_H4, "M15": mt5.TIMEFRAME_M15, "M5": mt5.TIMEFRAME_M5}
 
 
 class MarketDataBody(BaseModel):
     symbol: str
     candles: list[dict]
+    timeframe: str = "M5"   # "H4" | "M15" | "M5"
 
 
 @app.post("/api/market-data")
 def post_market_data(body: MarketDataBody):
-    """Reçoit {symbol, candles:[{time,open,high,low,close,volume}]} du pont MT5."""
-    _market_data[body.symbol] = {
+    """Reçoit {symbol, timeframe, candles:[{time,open,high,low,close,volume}]}."""
+    tfn = body.timeframe.upper()
+    tf = _TF_NAME.get(tfn, mt5.TIMEFRAME_M5)
+    _market_data.setdefault(body.symbol, {})[tf] = {
         "candles": body.candles,
         "count": len(body.candles),
+        "timeframe": tfn,
         "received_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
-    return {"ok": True, "symbol": body.symbol, "count": len(body.candles)}
+    return {"ok": True, "symbol": body.symbol, "timeframe": tfn, "count": len(body.candles)}
 
 
 @app.get("/api/market-data")
 def get_market_data(symbol: str | None = None):
-    """État des données MT5 reçues (monitoring). ?symbol=XAUUSD pour les bougies."""
+    """État des données MT5 reçues du pont (monitoring)."""
     if symbol:
-        return _market_data.get(symbol, {"count": 0, "candles": []})
-    return {"symbols": {s: {"count": d["count"], "received_at": d["received_at"]}
-                        for s, d in _market_data.items()}}
+        tfs = _market_data.get(symbol, {})
+        return {"symbol": symbol, "timeframes": {
+            d["timeframe"]: {"count": d["count"], "received_at": d["received_at"]}
+            for d in tfs.values()}}
+    return {"symbols": {s: {
+        "timeframes": sorted(d["timeframe"] for d in tfs.values()),
+        "last_received": max((d["received_at"] for d in tfs.values()), default=None),
+    } for s, tfs in _market_data.items()}}
 
 
 # ── Navigation multi-dashboards ──────────────────────────────────────────────
