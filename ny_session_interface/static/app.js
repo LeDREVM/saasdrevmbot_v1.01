@@ -85,7 +85,11 @@ function renderState(s) {
   run.textContent = s.running ? `▶ MOTEUR ACTIF · ${s.profile}` : "⏸ MOTEUR ARRÊTÉ";
   run.className = "badge " + (s.running ? "run-on" : "run-off");
 
-  setBadge("badge-conn", s.connected, s.simulate ? "MT5 (sim)" : "MT5");
+  // Compte/positions poussés par le pont MT5 (VPS Windows) → données RÉELLES
+  // même quand le moteur cloud tourne en SIMULATION pour l'exécution.
+  const bridged = s.account_source === "mt5bridge";
+  const connLabel = bridged ? "MT5 (pont)" : s.simulate ? "MT5 (sim)" : "MT5";
+  setBadge("badge-conn", s.connected || bridged, connLabel);
   const rem = s.session_open ? nyRemaining() : null;
   setBadge("badge-session", s.session_open,
     s.session_open ? (rem ? `Session NY · reste ${rem}` : "Session NY ouverte") : "Hors session NY");
@@ -155,9 +159,12 @@ function isBreakeven(p) {
   return p.type === "BUY" ? p.sl >= p.price_open : (p.sl > 0 && p.sl <= p.price_open);
 }
 
-function renderPositions(list) {
+function renderPositions(list, source) {
   $("pos-count").textContent = list.length;
   const body = $("pos-body");
+  // Positions poussées par le pont MT5 = lecture seule ici (l'exécution reste
+  // côté terminal Windows) → on désactive le bouton « Fermer » du cloud.
+  const readonly = source === "mt5bridge";
   if (!list.length) {
     body.innerHTML = '<tr class="empty"><td colspan="11">Aucune position</td></tr>';
     return;
@@ -168,6 +175,9 @@ function renderPositions(list) {
     const r = computeR(p);
     const rTxt = r === null ? "—" : signed(r, 1) + " R";
     const be = isBreakeven(p) ? '<span class="badge-be">SL→BE</span>' : "";
+    const closeCell = readonly
+      ? '<span class="pos-readonly" title="Fermeture depuis le terminal MT5 Windows">🔒 pont</span>'
+      : `<button class="btn-close-pos" data-ticket="${p.ticket}">✕ Fermer</button>`;
     return `<tr>
       <td>${p.ticket}</td><td><b>${p.symbol}</b></td>
       <td class="${dirCls}">${p.type}</td><td>${fmt(p.volume)}</td>
@@ -175,7 +185,7 @@ function renderPositions(list) {
       <td>${p.sl}</td><td>${p.tp}</td>
       <td class="${r >= 0 ? "pnl-pos" : "pnl-neg"}">${rTxt}${be}</td>
       <td class="${pnlCls}"><b>${signed(p.pnl)}</b></td>
-      <td><button class="btn-close-pos" data-ticket="${p.ticket}">✕ Fermer</button></td>
+      <td>${closeCell}</td>
     </tr>`;
   }).join("");
   body.querySelectorAll(".btn-close-pos").forEach((b) => {
@@ -502,7 +512,7 @@ async function poll() {
       api("/api/stats"),
     ]);
     renderState(state);
-    renderPositions(pos.positions);
+    renderPositions(pos.positions, pos.source);
     renderSignals(sig.signals);
     appendLogs(logs.logs);
     renderStats(stats);

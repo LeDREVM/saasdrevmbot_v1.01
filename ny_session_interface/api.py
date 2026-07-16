@@ -66,6 +66,22 @@ _KNOWN_SOURCES = ("mt5bridge", "twelvedata", "alphavantage")
 # comme source de prix (le paquet MetaTrader5 étant Windows-only).
 _market_data: dict[str, dict] = {}
 
+# État COMPTE + POSITIONS poussé par le même pont (mt5_data_sender.py). Permet au
+# dashboard cloud d'afficher l'équité/le solde/les positions RÉELS du terminal
+# Windows au lieu des valeurs de SIMULATION. Considéré périmé au-delà de
+# _MT5_STATE_TTL (le feeder pousse toutes les 5 min → on tolère quelques cycles).
+_mt5_state: dict = {}   # {account, positions, start_equity, day, received_at, received_ts}
+_MT5_STATE_TTL = int(os.environ.get("MT5_STATE_TTL", "900"))  # 15 min
+
+
+def _fresh_mt5_state():
+    """État MT5 poussé s'il est encore frais, sinon None (→ fallback SIMULATION)."""
+    if not _mt5_state:
+        return None
+    if time.time() - _mt5_state.get("received_ts", 0) > _MT5_STATE_TTL:
+        return None
+    return _mt5_state
+
 
 def _mt5_label() -> str:
     return "sim" if engine.simulate else "mt5"
@@ -176,12 +192,26 @@ class ToggleBody(BaseModel):
 # ── Lecture d'état ─────────────────────────────────────────────────────────--
 @app.get("/api/state")
 def get_state():
-    return engine.snapshot()
+    snap = engine.snapshot()
+    bridge = _fresh_mt5_state()
+    if bridge and bridge.get("account"):
+        # Compte RÉEL poussé par le pont MT5 → prime sur la SIMULATION cloud.
+        snap["account"] = bridge["account"]
+        snap["account_source"] = "mt5bridge"
+        snap["account_received_at"] = bridge["received_at"]
+    else:
+        snap["account_source"] = _mt5_label()
+    return snap
 
 
 @app.get("/api/positions")
 def get_positions():
-    return {"positions": engine.positions()}
+    bridge = _fresh_mt5_state()
+    if bridge is not None and bridge.get("positions") is not None:
+        # Positions RÉELLES poussées par le pont MT5 (terminal Windows).
+        return {"positions": bridge["positions"], "source": "mt5bridge",
+                "received_at": bridge["received_at"]}
+    return {"positions": engine.positions(), "source": _mt5_label()}
 
 
 @app.get("/api/signals")
@@ -233,6 +263,60 @@ def get_market_data(symbol: str | None = None):
         "timeframes": sorted(d["timeframe"] for d in tfs.values()),
         "last_received": max((d["received_at"] for d in tfs.values()), default=None),
     } for s, tfs in _market_data.items()}}
+
+
+# ── Réception COMPTE + POSITIONS poussés par le pont (mt5_data_sender.py) ──────
+# Même feeder que /api/market-data ; alimente /api/state (account) et
+# /api/positions avec les vraies valeurs du terminal MT5 Windows.
+class Mt5StateBody(BaseModel):
+    account: dict | None = None
+    positions: list[dict] | None = None
+
+
+@app.post("/api/mt5-state")
+def post_mt5_state(body: Mt5StateBody):
+    """Reçoit {account:{login,balance,equity,currency,leverage,...}, positions:[...]}.
+
+    `start_equity` (donc le drawdown journalier RÉEL) est dérivé côté console :
+    première équité reçue de la journée UTC — le feeder n'a pas à la suivre.
+    """
+    now = datetime.now(timezone.utc)
+    today = now.date().isoformat()
+    start_eq = _mt5_state.get("start_equity") if _mt5_state.get("day") == today else None
+    acc = dict(body.account) if body.account else None
+    if acc is not None:
+        eq = acc.get("equity")
+        if not start_eq:
+            start_eq = eq
+        if start_eq:
+            acc["start_equity"] = round(start_eq, 2)
+            acc["dd_pct"] = round(max(0.0, (start_eq - (eq if eq is not None else start_eq)) / start_eq * 100), 2)
+        else:
+            acc["dd_pct"] = 0.0
+    _mt5_state.clear()
+    _mt5_state.update({
+        "account": acc,
+        "positions": body.positions or [],
+        "start_equity": start_eq,
+        "day": today,
+        "received_at": now.isoformat(timespec="seconds"),
+        "received_ts": time.time(),
+    })
+    return {"ok": True, "positions": len(body.positions or [])}
+
+
+@app.get("/api/mt5-state")
+def get_mt5_state():
+    """État compte/positions reçu du pont (monitoring : fraîcheur + source)."""
+    bridge = _fresh_mt5_state()
+    return {
+        "present": _mt5_state.get("received_ts") is not None,
+        "fresh": bridge is not None,
+        "received_at": _mt5_state.get("received_at"),
+        "ttl_seconds": _MT5_STATE_TTL,
+        "positions": len(_mt5_state.get("positions") or []),
+        "has_account": bool(_mt5_state.get("account")),
+    }
 
 
 # ── Navigation multi-dashboards ──────────────────────────────────────────────
