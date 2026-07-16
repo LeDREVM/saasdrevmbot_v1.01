@@ -252,6 +252,33 @@ def detect_m5_sweep_and_bos(df_m5: pd.DataFrame):
     return swept, bos
 
 
+def detect_structure(df_m5: pd.DataFrame, left: int = 2, right: int = 2) -> dict:
+    """Structure de marché : tendance (HH/HL = up · LH/LL = down) et dernier
+    événement de cassure — BOS (Break of Structure, continuation) ou CHoCH
+    (Change of Character, 1er break CONTRE la tendance = signal de retournement).
+
+    Renvoie {trend, event, direction} où event ∈ {"BOS","CHOCH",None}.
+    """
+    highs, lows = swing_levels(df_m5, left, right)
+    if len(highs) < 2 or len(lows) < 2:
+        return {"trend": None, "event": None, "direction": None}
+    last_close = float(df_m5["close"].iloc[-1])
+
+    # Tendance établie par les 2 derniers swings de chaque côté.
+    hh, hl = highs[-1] > highs[-2], lows[-1] > lows[-2]
+    lh, ll = highs[-1] < highs[-2], lows[-1] < lows[-2]
+    trend = "up" if (hh and hl) else "down" if (lh and ll) else None
+
+    event = direction = None
+    if last_close > highs[-1]:               # cassure haussière du dernier swing high
+        direction = "up"
+        event = "BOS" if trend == "up" else "CHOCH"
+    elif last_close < lows[-1]:              # cassure baissière du dernier swing low
+        direction = "down"
+        event = "BOS" if trend == "down" else "CHOCH"
+    return {"trend": trend, "event": event, "direction": direction}
+
+
 # ============================================================================
 # ALERTES TELEGRAM (section 8)
 # ============================================================================
@@ -1279,6 +1306,7 @@ class BotEngine:
                     continue
                 setup = classify_setup(ctx, rr_ratio=profile["rr_target"])
                 fvg = detect_fvg(df_m5)
+                structure = detect_structure(df_m5)
                 conf = score_confluence(ctx, fvg, setup.direction)
                 grade = setup.grade.value
                 out.append({
@@ -1306,6 +1334,7 @@ class BotEngine:
                         "m5_trigger": ctx.m5_trigger,
                     },
                     "fvg": fvg,
+                    "structure": structure,   # {trend, event: BOS|CHOCH, direction}
                 })
             except Exception as e:  # noqa: BLE001
                 log.exception("[%s] Erreur scan_setups : %s", name, e)

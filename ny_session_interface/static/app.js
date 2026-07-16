@@ -311,6 +311,19 @@ function renderScan(list) {
       const ok = !!c[p.key];
       return `<span class="pill ${ok ? (p.cls || "ok") : "no"}">${ok ? "✓" : "—"} ${p.label}</span>`;
     }).join("");
+
+    // Structure de marché : CHoCH (retournement) ou BOS (continuation).
+    const st = r.structure || {};
+    let structBadge = "";
+    if (st.event) {
+      const arrow = st.direction === "up" ? "▲" : st.direction === "down" ? "▼" : "";
+      const cls = st.event === "CHOCH" ? "choch" : "bos";
+      const label = st.event === "CHOCH" ? "CHoCH" : "BOS";
+      const title = st.event === "CHOCH"
+        ? "Change of Character — 1er break contre-tendance (retournement possible)"
+        : "Break of Structure — cassure dans le sens de la tendance (continuation)";
+      structBadge = `<span class="struct ${cls}" title="${title}">${label} ${arrow}</span>`;
+    }
     const extras = EXTRA_CONF.map((p) => {
       const ok = !!c[p.key];
       return `<span class="chip ${ok ? "chip-on" : ""}">${p.label}</span>`;
@@ -328,6 +341,7 @@ function renderScan(list) {
         <div class="top">
           <span class="sym">${r.symbol}</span>
           <span class="${dirCls}">${dirTxt}</span>
+          ${structBadge}
           ${decision}
           <span class="score"><b class="num">${r.confluence_points}</b>/${r.confluence_max}
             ${r.price_source ? `<span style="color:var(--faint)">· ${r.price_source}</span>` : ""}</span>

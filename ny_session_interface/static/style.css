@@ -122,6 +122,10 @@ select{background:var(--surface2);color:var(--ink);border:1px solid var(--border
 .d-watch{background:var(--surface2);color:var(--warn);border:1px solid var(--warn)}
 .d-wait{background:var(--surface2);color:var(--faint);border:1px solid var(--border)}
 .dir-buy{color:var(--ok);font-weight:700} .dir-sell{color:var(--danger);font-weight:700}
+/* Structure de marché : CHoCH (retournement, ambre) vs BOS (continuation, sobre) */
+.struct{font-size:10px;font-weight:800;letter-spacing:.06em;padding:2px 8px;border-radius:99px;white-space:nowrap}
+.struct.choch{background:var(--warn);color:#141B28}
+.struct.bos{background:var(--surface2);color:var(--muted);border:1px solid var(--border)}
 .score{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap}
 .score b{font-size:15px;color:var(--ink)}
 .pillars{display:flex;gap:5px;flex-wrap:wrap}
