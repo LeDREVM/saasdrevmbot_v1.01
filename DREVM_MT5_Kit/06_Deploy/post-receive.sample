@@ -1,0 +1,46 @@
+#!/bin/sh
+# =====================================================================
+# post-receive.sample — Hook Git bare (VPS) : auto-déploiement DREVM
+# ---------------------------------------------------------------------
+# Workflow Termux -> VPS déjà en place (bare repo). Ce hook checkout le
+# push puis copie les sources MQL5 du kit vers le dossier MT5.
+#
+# Installation :
+#   1. Copier dans <bare_repo>/hooks/post-receive
+#   2. Adapter WORK_TREE et MT5_MQL5 ci-dessous
+#   3. chmod +x post-receive   (Git Bash / WSL)  — sous Windows, Git for
+#      Windows exécute les hooks sh via son bash intégré.
+# Rappel Termux : core.fileMode false (stockage Android).
+# =====================================================================
+
+# ── Config (à adapter) ────────────────────────────────────────────────
+WORK_TREE="C:/drevm/deploy"                                     # checkout de travail
+MT5_MQL5="C:/Users/Administrator/AppData/Roaming/MetaQuotes/Terminal/<HASH>/MQL5"
+KIT_DIR="$WORK_TREE/DREVM_MT5_Kit"
+
+# ── Checkout du push ──────────────────────────────────────────────────
+mkdir -p "$WORK_TREE"
+GIT_WORK_TREE="$WORK_TREE" git checkout -f main
+echo "[hook] checkout main -> $WORK_TREE"
+
+# ── Déploiement MQL5 ──────────────────────────────────────────────────
+if [ -d "$KIT_DIR" ]; then
+    mkdir -p "$MT5_MQL5/Experts/DREVM" "$MT5_MQL5/Indicators/DREVM" "$MT5_MQL5/Presets"
+
+    cp -f "$KIT_DIR/01_Experts/"*.mq5    "$MT5_MQL5/Experts/DREVM/"    2>/dev/null
+    cp -f "$KIT_DIR/03_Include/"*.mqh    "$MT5_MQL5/Experts/DREVM/"    2>/dev/null
+    cp -f "$KIT_DIR/02_Indicators/"*.mq5 "$MT5_MQL5/Indicators/DREVM/" 2>/dev/null
+    cp -f "$KIT_DIR/04_Presets/"*.set    "$MT5_MQL5/Presets/"          2>/dev/null
+
+    echo "[hook] Kit MQL5 déployé -> $MT5_MQL5"
+    echo "[hook] ⚠️ Recompiler dans MetaEditor (F7) ou redémarrer MT5."
+else
+    echo "[hook] Kit non trouvé ($KIT_DIR) — déploiement MQL5 ignoré."
+fi
+
+# ── Redémarrage du service advisor si présent ─────────────────────────
+if command -v nssm >/dev/null 2>&1; then
+    nssm restart DrevmAiAdvisor >/dev/null 2>&1 && echo "[hook] DrevmAiAdvisor redémarré."
+fi
+
+echo "[hook] Déploiement terminé ✅"
