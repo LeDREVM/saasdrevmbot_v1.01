@@ -29,7 +29,8 @@
   # Le calendrier public (/api/calendar) passe toujours par la fonction Netlify,
   # aucun backend requis pour lui.
   #
-  # VITE_API_URL = ""   # ← décommenter pour le MODE A (reverse-proxy)
+  # MODE A activé : le front appelle /api/* en RELATIF, Netlify proxifie (bas).
+  VITE_API_URL = ""
 
 # ── Calendrier économique → Netlify Function ──────────────────────────────────
 [[redirects]]
@@ -49,30 +50,32 @@
   status = 200
 
 # ── [proxy backend] Reverse-proxy vers les backends (MODE A) ──────────────────
-# Décommenter et remplacer les URLs par tes backends déployés. L'ORDRE compte :
-# ces règles doivent rester AVANT le fallback SPA /* ci-dessous, et la règle
-# Express (spécifique) AVANT la règle FastAPI (générale).
+# ⚠️ PLACEHOLDERS À REMPLACER — tant que les URLs "REMPLACE-…" ci-dessous ne
+# pointent pas sur tes vrais backends déployés, les appels /api/* (hors
+# /api/calendar) renverront une erreur sur le site live. Remplace les 3 URLs
+# puis redéploie. L'ORDRE compte : ces règles restent AVANT le fallback SPA /*,
+# et la règle Express (spécifique) AVANT la règle FastAPI (générale).
 #
-# Corrélations news/prix = backend Express « GoldyXbOT »
-# [[redirects]]
-#   from   = "/api/stats/correlations"
-#   to     = "https://TON-EXPRESS.exemple.com/api/stats/correlations"
-#   status = 200
-#   force  = true
-#
-# Reste de l'API applicative = backend FastAPI (:splat = tout ce qui suit)
-# [[redirects]]
-#   from   = "/api/*"
-#   to     = "https://TON-FASTAPI.exemple.com/api/:splat"
-#   status = 200
-#   force  = true
-#
+# Corrélations news/prix = backend Express « GoldyXbOT » (Render/VPS, ex. :3000)
+[[redirects]]
+  from   = "/api/stats/correlations"
+  to     = "https://REMPLACE-express.onrender.com/api/stats/correlations"
+  status = 200
+  force  = true
+
+# Reste de l'API applicative = backend FastAPI (:splat = tout ce qui suit, ex. :8000)
+[[redirects]]
+  from   = "/api/*"
+  to     = "https://REMPLACE-fastapi.onrender.com/api/:splat"
+  status = 200
+  force  = true
+
 # Health check FastAPI (route racine /health, hors /api/*) — utilisé par la page d'accueil
-# [[redirects]]
-#   from   = "/health"
-#   to     = "https://TON-FASTAPI.exemple.com/health"
-#   status = 200
-#   force  = true
+[[redirects]]
+  from   = "/health"
+  to     = "https://REMPLACE-fastapi.onrender.com/health"
+  status = 200
+  force  = true
 
 # ── [proxy console] Console NY Bot accessible depuis partout via Netlify ──────
 # La console (moteur Python :8800) NE PEUT PAS être hébergée sur Netlify — elle
@@ -87,19 +90,21 @@
 #  2. Sur le VPS, dans ny_session_interface/.env :  REQUIRE_TOKEN=1  et un
 #     API_TOKEN long et aléatoire — SINON équité/positions/logs seraient publics.
 #     (Saisis ensuite ce token dans le champ « API token » de la console.)
-#  3. Décommenter ci-dessous et remplacer l'URL par celle du tunnel. L'ORDRE
-#     compte : garder ces règles AVANT le fallback SPA /*.
+#  3. Remplace l'URL "REMPLACE-tunnel…" ci-dessous par celle du tunnel, puis
+#     redéploie. ⚠️ PLACEHOLDER : tant que l'URL n'est pas la vraie, /bot/*
+#     renverra une erreur. L'ORDRE compte : ces règles restent AVANT le fallback
+#     SPA /* (déjà le cas ici).
 #
-# [[redirects]]                       # /bot sans slash → /bot/ (chemins relatifs)
-#   from   = "/bot"
-#   to     = "/bot/"
-#   status = 301
-#
-# [[redirects]]
-#   from   = "/bot/*"
-#   to     = "https://TON-TUNNEL.trycloudflare.com/:splat"
-#   status = 200
-#   force  = true
+[[redirects]]                         # /bot sans slash → /bot/ (chemins relatifs)
+  from   = "/bot"
+  to     = "/bot/"
+  status = 301
+
+[[redirects]]
+  from   = "/bot/*"
+  to     = "https://REMPLACE-tunnel.trycloudflare.com/:splat"
+  status = 200
+  force  = true
 
 # ── SPA Fallback (SvelteKit adapter-static) ───────────────────────────────────
 [[redirects]]
