@@ -41,17 +41,56 @@ qui alimente le `news_score` et l'`event_context` de l'AI Setup Validator
 ## `goldrogers-mt5/` — pont MT5 (Python)
 
 Récupéré de **`LeDREVM/goldrogers-trading-bot`** (`scripts/mt5_data_sender.py`) —
-le seul maillon vraiment complémentaire : il lit l'OHLC MT5 (M5, 100 bougies,
-7 symboles) et le pousse toutes les 5 min vers une API. C'est la brique
+le seul maillon vraiment complémentaire : il lit l'OHLC MT5 (**H4 + M15 + M5**,
+7 symboles) et le pousse toutes les 5 min vers la console. C'est la brique
 **« MT5 Data Collector »** de l'architecture cible.
 
-**Branchement** : définir `MARKET_DATA_API_URL` sur l'endpoint récepteur de la
-console — `http://<console>:8800/api/market-data` (implémenté dans
-`ny_session_interface/api.py`, qui stocke les dernières bougies par symbole et
-les expose en `GET /api/market-data` pour le monitoring). Sans la variable, le
-script s'arrête avec un message. Le reste du dépôt `goldrogers-trading-bot` (indicateurs Wyckoff/
-Ichimoku/RSI, bots, dashboards) **duplique** ce que le pipeline `ny_session_interface`
-fait déjà en plus propre → volontairement **non importé**.
+### Accès au dashboard depuis Linux/cloud (le paquet `MetaTrader5` est Windows-only)
+
+Le pont permet à la console — hébergée sur **Linux/cloud**, où `MetaTrader5`
+n'existe pas — de tourner sur les **vraies bougies MT5**. Flux complet :
+
+```
+VPS Windows (MT5 + terminal ouvert)          Console Linux/cloud
+  mt5_data_sender.py  ──POST /api/market-data──▶  _market_data (par TF)
+     (H4/M15/M5)              │                          │
+                             │                          ▼  PRICE_SOURCE=mt5bridge
+                             │            get_rates → provider "mt5bridge"
+                             │            → scan + signal sur données MT5 réelles
+                             │
+     account_info()          └─POST /api/mt5-state──▶  _mt5_state (frais < TTL)
+     positions_get()                                        │
+                                                            ▼
+                                       /api/state (account) + /api/positions
+                                       → équité / solde / positions RÉELLES
+```
+
+**Branchement (2 côtés) :**
+1. **VPS Windows** : `MARKET_DATA_API_URL=http://<console>:8800/api/market-data`
+   puis `python mt5_data_sender.py`. À chaque cycle il envoie les 3 timeframes
+   (taggés `timeframe`) **et** pousse le compte + les positions ouvertes vers
+   `/api/mt5-state` (URL dérivée automatiquement d'`MARKET_DATA_API_URL`, ou
+   forcée par `MT5_STATE_API_URL`). Si la console tourne avec `REQUIRE_TOKEN=1`,
+   renseigner `MARKET_DATA_API_TOKEN` (envoyé en `X-Api-Token` sur les deux POST).
+2. **Console** : `PRICE_SOURCE=mt5bridge` (ou en cascade, ex.
+   `mt5bridge,twelvedata`). Le moteur consomme alors les bougies du pont ;
+   `GET /api/market-data` et `GET /api/mt5-state` exposent l'état (timeframes
+   reçus, fraîcheur compte/positions) pour le monitoring.
+
+**Compte + positions réels sur le dashboard cloud :** `/api/state` renvoie le
+compte poussé (équité, solde, levier, drawdown journalier dérivé côté console)
+avec `account_source: "mt5bridge"`, et `/api/positions` renvoie les positions
+ouvertes réelles (`source: "mt5bridge"`). Au-delà de `MT5_STATE_TTL` (15 min par
+défaut) sans nouvel envoi, le dashboard retombe proprement sur la `SIMULATION`.
+
+> ⚠️ Le pont fournit désormais **PRIX + COMPTE + POSITIONS** (lecture seule).
+> L'**exécution d'ordres** (ouverture/fermeture, gestion SL/TP) reste côté
+> Windows (terminal MT5) : le bouton « Fermer » du dashboard cloud ne peut pas
+> agir sur une position réelle tant que la console n'a pas de terminal MT5 local.
+
+Le reste du dépôt `goldrogers-trading-bot` (indicateurs Wyckoff/Ichimoku/RSI,
+bots, dashboards) **duplique** ce que le pipeline `ny_session_interface` fait déjà
+en plus propre → volontairement **non importé**.
 
 ## Ce qui a été volontairement EXCLU
 - 🔒 `docs/Storj-S3-Credentials-*.txt` de `goldrogers-trading-bot` (**credentials en

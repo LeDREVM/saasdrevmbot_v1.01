@@ -20,6 +20,11 @@
  Poids du GLOBAL SCORE (tels que spécifiés) :
    Trend 0.30 · Wyckoff 0.20 · Momentum 0.15 · Liquidity 0.15 · Volatility 0.10 · News 0.10
 
+ Le sous-score Liquidity intègre l'ORDER FLOW INSTITUTIONNEL (concepts smart
+ money, price-action pur — aucune donnée DOM/tick requise) : order blocks +
+ mitigation, zones premium/discount (accumulation/distribution), breaker blocks,
+ en plus des sweeps de liquidité et pools (equal highs/lows) déjà présents.
+
  Réutilise les détecteurs du moteur live (ny_session_bot) — pas de logique
  dupliquée. Read-only : n'ouvre aucun trade.
 
@@ -120,6 +125,76 @@ def _liquidity_sweep(df: pd.DataFrame, lookback: int = 20) -> int:
     return 0
 
 
+# ── Order flow institutionnel — concepts "smart money" (price-action pur) ──────
+# Aucune donnée nouvelle (pas de DOM/ticks) : on lit l'empreinte des institutions
+# dans la structure des bougies OHLC. Ces features nourrissent le sous-score
+# Liquidity et le vote de direction.
+
+def _dealing_range(df: pd.DataFrame, lookback: int = 40):
+    """Range de négociation récent (hors bougie courante). None si dégénéré."""
+    seg = df.iloc[-(lookback + 1):-1]
+    if len(seg) < 2:
+        return None
+    lo, hi = float(seg["low"].min()), float(seg["high"].max())
+    return (lo, hi) if hi > lo else None
+
+
+def _premium_discount(df: pd.DataFrame, lookback: int = 40) -> float:
+    """Position du prix dans le range : 0 = discount profond · 0.5 = équilibre
+    (50 % du range) · 1 = premium profond. Les institutions accumulent en
+    discount (<0.5) et distribuent en premium (>0.5)."""
+    rng = _dealing_range(df, lookback)
+    if rng is None:
+        return 0.5
+    lo, hi = rng
+    price = float(df["close"].iloc[-1])
+    return max(0.0, min(1.0, (price - lo) / (hi - lo)))
+
+
+def _order_block(df: pd.DataFrame, atr_val: float, lookback: int = 30,
+                 disp_mult: float = 1.2) -> dict:
+    """Order block institutionnel = dernière bougie de sens OPPOSÉ juste avant une
+    bougie de *displacement* (corps > disp_mult×ATR, empreinte d'un ordre
+    institutionnel). Renvoie le plus récent : {dir, top, bottom, mitigating}
+    (`mitigating` = le prix courant est revenu dans la zone de l'OB)."""
+    n = len(df)
+    if n < 6 or atr_val <= 0:
+        return {"dir": None, "mitigating": False}
+    o = df["open"].to_numpy(float); c = df["close"].to_numpy(float)
+    h = df["high"].to_numpy(float); l = df["low"].to_numpy(float)
+    price = float(c[-1])
+    found = {"dir": None, "mitigating": False}
+    for i in range(max(1, n - lookback), n - 1):
+        if (c[i] - o[i]) > disp_mult * atr_val:           # displacement haussier
+            for j in range(i - 1, max(-1, i - 4), -1):
+                if c[j] < o[j]:                            # → OB haussier
+                    found = {"dir": "BULLISH", "top": float(max(o[j], c[j])),
+                             "bottom": float(l[j])}
+                    break
+        elif (o[i] - c[i]) > disp_mult * atr_val:          # displacement baissier
+            for j in range(i - 1, max(-1, i - 4), -1):
+                if c[j] > o[j]:                            # → OB baissier
+                    found = {"dir": "BEARISH", "top": float(h[j]),
+                             "bottom": float(min(o[j], c[j]))}
+                    break
+    if found["dir"]:
+        found["mitigating"] = bool(found["bottom"] <= price <= found["top"])
+    return found
+
+
+def _breaker(df: pd.DataFrame) -> int:
+    """Breaker block = order block invalidé : liquidité balayée puis structure
+    cassée dans l'autre sens → le niveau s'inverse (support↔résistance).
+    +1 haussier / -1 baissier / 0."""
+    sweep = _liquidity_sweep(df)
+    bos = _bos(df)
+    if sweep == 1 and bos > 0:
+        return 1
+    if sweep == -1 and bos < 0:
+        return -1
+    return 0
+
+
 def build_features(df: pd.DataFrame, news_score: float = 100.0,
                    spread: float = 0.0, session_active: bool = True) -> dict:
     """
@@ -134,6 +209,7 @@ def build_features(df: pd.DataFrame, news_score: float = 100.0,
     cloud_top = float(max(sen_a.iloc[-1], sen_b.iloc[-1]))
     cloud_bot = float(min(sen_a.iloc[-1], sen_b.iloc[-1]))
     fvg = detect_fvg(df)
+    ob = _order_block(df, a)
     highs, lows = _swings(df)
     r = rsi(close)
     body = abs(float(df["close"].iloc[-1]) - float(df["open"].iloc[-1]))
@@ -158,6 +234,11 @@ def build_features(df: pd.DataFrame, news_score: float = 100.0,
         "equal_highs": _equal_levels(highs, a),
         "equal_lows": _equal_levels(lows, a),
         "liquidity_sweep": _liquidity_sweep(df),
+        # ── Order flow institutionnel (smart money) ──
+        "premium_discount": round(_premium_discount(df), 3),
+        "ob_dir": ob["dir"],
+        "ob_mitigation": bool(ob.get("mitigating")),
+        "breaker": _breaker(df),
         "atr": a,
         "spread": spread,
         "news_score": news_score,
@@ -181,6 +262,13 @@ def candidate_direction(f: dict) -> Optional[str]:
     score += 1 if f["spring_detected"] else -1 if f["utad_detected"] else 0
     score += 1 if f["fvg_dir"] == "BULLISH" else -1 if f["fvg_dir"] == "BEARISH" else 0
     score += 0.5 * f["bos"] + 0.5 * f["liquidity_sweep"]
+    # Order flow institutionnel : OB mitigé (fort), breaker (moyen), zone
+    # premium/discount (léger — accumulation en discount / distribution en premium).
+    if f["ob_mitigation"] and f["ob_dir"]:
+        score += 1 if f["ob_dir"] == "BULLISH" else -1
+    score += 0.5 * f["breaker"]
+    pd_bias = 0.5 - f["premium_discount"]           # >0 = discount (favorise BUY)
+    score += 0.4 * (1 if pd_bias > 0.15 else -1 if pd_bias < -0.15 else 0)
     if score > 0.75:
         return "up"
     if score < -0.75:
@@ -226,14 +314,22 @@ def sub_scores(f: dict, direction: str) -> dict:
     mom += min(15.0, 15.0 * f["displacement"])  # bougie de déplacement
     mom = _clip(mom)
 
-    # LIQUIDITY : sweep dans le sens + FVG présent + egal highs/lows opposés pris.
-    liq = 40.0
+    # LIQUIDITY (order flow institutionnel) : sweep + FVG + pools de liquidité
+    # (equal highs/lows) + order block mitigé dans le bon sens + zone
+    # premium/discount favorable + breaker aligné.
+    liq = 28.0
     if (f["liquidity_sweep"] > 0) == up and f["liquidity_sweep"] != 0:
-        liq += 25
+        liq += 16
     if f["fvg_dir"]:
-        liq += 15
+        liq += 10
     if (up and f["equal_lows"]) or (not up and f["equal_highs"]):
-        liq += 20  # liquidité reposant sous/sur des égalités → cible logique
+        liq += 14  # liquidité reposant sous/sur des égalités → cible logique
+    if f["ob_dir"] and (f["ob_dir"] == "BULLISH") == up and f["ob_mitigation"]:
+        liq += 18  # institution : entrée sur order block mitigé, dans le sens
+    if (up and f["premium_discount"] <= 0.45) or (not up and f["premium_discount"] >= 0.55):
+        liq += 12  # achat en discount / vente en premium
+    if (f["breaker"] > 0) == up and f["breaker"] != 0:
+        liq += 8   # breaker block inversé dans le sens
     liq = _clip(liq)
 
     # VOLATILITY : ATR dans une bande saine (ni mort ni chaotique) + spread OK.
@@ -290,6 +386,13 @@ def validate(df: pd.DataFrame, symbol: str = "?", news_score: float = 100.0,
     confidence = round(global_score)
 
     reasons = []
+    up = direction == "up"
+    if f["ob_dir"] and (f["ob_dir"] == "BULLISH") == up and f["ob_mitigation"]:
+        reasons.append("order block institutionnel mitigé dans le sens")
+    if (up and f["premium_discount"] <= 0.45) or (not up and f["premium_discount"] >= 0.55):
+        reasons.append("zone " + ("discount (accumulation)" if up else "premium (distribution)"))
+    if (f["breaker"] > 0) == up and f["breaker"] != 0:
+        reasons.append("breaker block inversé")
     if not session_active:
         reasons.append("hors session")
     if f["news_score"] < 60:

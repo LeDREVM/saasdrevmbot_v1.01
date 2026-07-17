@@ -30,6 +30,8 @@ from pydantic import BaseModel
 
 import time
 
+import pandas as pd
+
 import alphavantage
 import news
 import ny_session_bot as nsb
@@ -55,6 +57,30 @@ PRICE_SOURCE = os.environ.get("PRICE_SOURCE", "mt5").lower()
 _PRICE_CACHE_TTL = int(os.environ.get("PRICE_CACHE_TTL", "60"))
 _TF_INTERVAL = {mt5.TIMEFRAME_M5: "5min", mt5.TIMEFRAME_M15: "15min", mt5.TIMEFRAME_H4: "4h"}
 _candle_cache: dict = {}   # (src, symbol, interval) -> (ts, df|None)
+# Sources externes reconnues dans PRICE_SOURCE (cascade ordonnée).
+_KNOWN_SOURCES = ("mt5bridge", "twelvedata", "alphavantage")
+
+# Store en mémoire des bougies poussées par le pont MT5 (mt5_data_sender.py sur
+# le VPS Windows). Structure : {symbol: {timeframe_const: {candles, count, ...}}}.
+# Permet à un dashboard hébergé sur Linux/cloud d'utiliser les VRAIES bougies MT5
+# comme source de prix (le paquet MetaTrader5 étant Windows-only).
+_market_data: dict[str, dict] = {}
+
+# État COMPTE + POSITIONS poussé par le même pont (mt5_data_sender.py). Permet au
+# dashboard cloud d'afficher l'équité/le solde/les positions RÉELS du terminal
+# Windows au lieu des valeurs de SIMULATION. Considéré périmé au-delà de
+# _MT5_STATE_TTL (le feeder pousse toutes les 5 min → on tolère quelques cycles).
+_mt5_state: dict = {}   # {account, positions, start_equity, day, received_at, received_ts}
+_MT5_STATE_TTL = int(os.environ.get("MT5_STATE_TTL", "900"))  # 15 min
+
+
+def _fresh_mt5_state():
+    """État MT5 poussé s'il est encore frais, sinon None (→ fallback SIMULATION)."""
+    if not _mt5_state:
+        return None
+    if time.time() - _mt5_state.get("received_ts", 0) > _MT5_STATE_TTL:
+        return None
+    return _mt5_state
 
 
 def _mt5_label() -> str:
@@ -62,8 +88,7 @@ def _mt5_label() -> str:
 
 
 def _external_sources() -> list[str]:
-    return [s.strip() for s in PRICE_SOURCE.split(",")
-            if s.strip() in ("twelvedata", "alphavantage")]
+    return [s.strip() for s in PRICE_SOURCE.split(",") if s.strip() in _KNOWN_SOURCES]
 
 
 def _cached_candles(src: str, symbol: str, interval: str, n: int):
@@ -81,14 +106,32 @@ def _cached_candles(src: str, symbol: str, interval: str, n: int):
     return df
 
 
-def _cascade_provider(symbol: str, timeframe: int, n: int):
-    """Price provider (branché sur get_rates) : bougies natives par timeframe
-    depuis les sources externes en cascade. None → get_rates retombe sur MT5."""
-    interval = _TF_INTERVAL.get(timeframe)
-    if interval is None:
+def _bridge_candles(symbol: str, timeframe: int, n: int):
+    """Bougies poussées par le pont MT5 pour ce (symbole, timeframe). Convertit
+    le payload JSON du feeder en DataFrame compatible get_rates. None si absent."""
+    entry = _market_data.get(symbol, {}).get(timeframe)
+    if not entry or not entry.get("candles"):
         return None
+    df = pd.DataFrame(entry["candles"])
+    if not {"open", "high", "low", "close"}.issubset(df.columns) or len(df) < 40:
+        return None
+    if "time" in df.columns:
+        df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
+    if "volume" not in df.columns and "tick_volume" in df.columns:
+        df["volume"] = df["tick_volume"]
+    return df
+
+
+def _cascade_provider(symbol: str, timeframe: int, n: int):
+    """Price provider (branché sur get_rates) : bougies natives par timeframe,
+    en cascade selon l'ordre de PRICE_SOURCE (pont MT5, Twelve Data, Alpha
+    Vantage). None → get_rates retombe sur MT5/sim (filet final)."""
     for src in _external_sources():
-        df = _cached_candles(src, symbol, interval, n)
+        if src == "mt5bridge":
+            df = _bridge_candles(symbol, timeframe, n)
+        else:
+            interval = _TF_INTERVAL.get(timeframe)
+            df = _cached_candles(src, symbol, interval, n) if interval else None
         if df is not None and len(df) >= 40:
             if timeframe == mt5.TIMEFRAME_M5:
                 nsb.last_price_source[symbol] = src
@@ -149,12 +192,26 @@ class ToggleBody(BaseModel):
 # ── Lecture d'état ─────────────────────────────────────────────────────────--
 @app.get("/api/state")
 def get_state():
-    return engine.snapshot()
+    snap = engine.snapshot()
+    bridge = _fresh_mt5_state()
+    if bridge and bridge.get("account"):
+        # Compte RÉEL poussé par le pont MT5 → prime sur la SIMULATION cloud.
+        snap["account"] = bridge["account"]
+        snap["account_source"] = "mt5bridge"
+        snap["account_received_at"] = bridge["received_at"]
+    else:
+        snap["account_source"] = _mt5_label()
+    return snap
 
 
 @app.get("/api/positions")
 def get_positions():
-    return {"positions": engine.positions()}
+    bridge = _fresh_mt5_state()
+    if bridge is not None and bridge.get("positions") is not None:
+        # Positions RÉELLES poussées par le pont MT5 (terminal Windows).
+        return {"positions": bridge["positions"], "source": "mt5bridge",
+                "received_at": bridge["received_at"]}
+    return {"positions": engine.positions(), "source": _mt5_label()}
 
 
 @app.get("/api/signals")
@@ -169,34 +226,97 @@ def get_scan():
 
 
 # ── Réception des données MT5 poussées par le pont (mt5_data_sender.py) ───────
-# Store en mémoire des dernières bougies par symbole (source alternative quand
-# le terminal MT5 tourne sur un VPS séparé qui POST vers MARKET_DATA_API_URL).
-_market_data: dict[str, dict] = {}
+# Le feeder (VPS Windows) POST une fois par timeframe ; branché comme source de
+# prix "mt5bridge" (cf. _bridge_candles). `_market_data` est défini plus haut.
+_TF_NAME = {"H4": mt5.TIMEFRAME_H4, "M15": mt5.TIMEFRAME_M15, "M5": mt5.TIMEFRAME_M5}
 
 
 class MarketDataBody(BaseModel):
     symbol: str
     candles: list[dict]
+    timeframe: str = "M5"   # "H4" | "M15" | "M5"
 
 
 @app.post("/api/market-data")
 def post_market_data(body: MarketDataBody):
-    """Reçoit {symbol, candles:[{time,open,high,low,close,volume}]} du pont MT5."""
-    _market_data[body.symbol] = {
+    """Reçoit {symbol, timeframe, candles:[{time,open,high,low,close,volume}]}."""
+    tfn = body.timeframe.upper()
+    tf = _TF_NAME.get(tfn, mt5.TIMEFRAME_M5)
+    _market_data.setdefault(body.symbol, {})[tf] = {
         "candles": body.candles,
         "count": len(body.candles),
+        "timeframe": tfn,
         "received_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
-    return {"ok": True, "symbol": body.symbol, "count": len(body.candles)}
+    return {"ok": True, "symbol": body.symbol, "timeframe": tfn, "count": len(body.candles)}
 
 
 @app.get("/api/market-data")
 def get_market_data(symbol: str | None = None):
-    """État des données MT5 reçues (monitoring). ?symbol=XAUUSD pour les bougies."""
+    """État des données MT5 reçues du pont (monitoring)."""
     if symbol:
-        return _market_data.get(symbol, {"count": 0, "candles": []})
-    return {"symbols": {s: {"count": d["count"], "received_at": d["received_at"]}
-                        for s, d in _market_data.items()}}
+        tfs = _market_data.get(symbol, {})
+        return {"symbol": symbol, "timeframes": {
+            d["timeframe"]: {"count": d["count"], "received_at": d["received_at"]}
+            for d in tfs.values()}}
+    return {"symbols": {s: {
+        "timeframes": sorted(d["timeframe"] for d in tfs.values()),
+        "last_received": max((d["received_at"] for d in tfs.values()), default=None),
+    } for s, tfs in _market_data.items()}}
+
+
+# ── Réception COMPTE + POSITIONS poussés par le pont (mt5_data_sender.py) ──────
+# Même feeder que /api/market-data ; alimente /api/state (account) et
+# /api/positions avec les vraies valeurs du terminal MT5 Windows.
+class Mt5StateBody(BaseModel):
+    account: dict | None = None
+    positions: list[dict] | None = None
+
+
+@app.post("/api/mt5-state")
+def post_mt5_state(body: Mt5StateBody):
+    """Reçoit {account:{login,balance,equity,currency,leverage,...}, positions:[...]}.
+
+    `start_equity` (donc le drawdown journalier RÉEL) est dérivé côté console :
+    première équité reçue de la journée UTC — le feeder n'a pas à la suivre.
+    """
+    now = datetime.now(timezone.utc)
+    today = now.date().isoformat()
+    start_eq = _mt5_state.get("start_equity") if _mt5_state.get("day") == today else None
+    acc = dict(body.account) if body.account else None
+    if acc is not None:
+        eq = acc.get("equity")
+        if not start_eq:
+            start_eq = eq
+        if start_eq:
+            acc["start_equity"] = round(start_eq, 2)
+            acc["dd_pct"] = round(max(0.0, (start_eq - (eq if eq is not None else start_eq)) / start_eq * 100), 2)
+        else:
+            acc["dd_pct"] = 0.0
+    _mt5_state.clear()
+    _mt5_state.update({
+        "account": acc,
+        "positions": body.positions or [],
+        "start_equity": start_eq,
+        "day": today,
+        "received_at": now.isoformat(timespec="seconds"),
+        "received_ts": time.time(),
+    })
+    return {"ok": True, "positions": len(body.positions or [])}
+
+
+@app.get("/api/mt5-state")
+def get_mt5_state():
+    """État compte/positions reçu du pont (monitoring : fraîcheur + source)."""
+    bridge = _fresh_mt5_state()
+    return {
+        "present": _mt5_state.get("received_ts") is not None,
+        "fresh": bridge is not None,
+        "received_at": _mt5_state.get("received_at"),
+        "ttl_seconds": _MT5_STATE_TTL,
+        "positions": len(_mt5_state.get("positions") or []),
+        "has_account": bool(_mt5_state.get("account")),
+    }
 
 
 # ── Navigation multi-dashboards ──────────────────────────────────────────────
