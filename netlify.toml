@@ -74,6 +74,33 @@
 #   status = 200
 #   force  = true
 
+# ── [proxy console] Console NY Bot accessible depuis partout via Netlify ──────
+# La console (moteur Python :8800) NE PEUT PAS être hébergée sur Netlify — elle
+# tourne sur ton VPS. Ce proxy te donne une URL publique stable :
+#   https://TON-SITE.netlify.app/bot/  →  console du VPS.
+#
+# Étapes :
+#  1. Sur le VPS : exposer la console en HTTPS. Le plus simple, SANS ouvrir de
+#     port : Cloudflare Tunnel →  cloudflared tunnel --url http://localhost:8800
+#     (donne une URL https://xxxx.trycloudflare.com, ou un tunnel nommé pour une
+#     URL stable). Alternative : reverse-proxy nginx + certificat.
+#  2. Sur le VPS, dans ny_session_interface/.env :  REQUIRE_TOKEN=1  et un
+#     API_TOKEN long et aléatoire — SINON équité/positions/logs seraient publics.
+#     (Saisis ensuite ce token dans le champ « API token » de la console.)
+#  3. Décommenter ci-dessous et remplacer l'URL par celle du tunnel. L'ORDRE
+#     compte : garder ces règles AVANT le fallback SPA /*.
+#
+# [[redirects]]                       # /bot sans slash → /bot/ (chemins relatifs)
+#   from   = "/bot"
+#   to     = "/bot/"
+#   status = 301
+#
+# [[redirects]]
+#   from   = "/bot/*"
+#   to     = "https://TON-TUNNEL.trycloudflare.com/:splat"
+#   status = 200
+#   force  = true
+
 # ── SPA Fallback (SvelteKit adapter-static) ───────────────────────────────────
 [[redirects]]
   from   = "/*"

@@ -12,9 +12,9 @@ from typing import Any, Dict, List, Optional
 
 import anthropic
 
-logger = logging.getLogger(__name__)
+from app.core.config import settings
 
-MODEL = "claude-sonnet-4-6"
+logger = logging.getLogger(__name__)
 
 # ─── Tool definitions ────────────────────────────────────────────────────────
 
@@ -119,16 +119,20 @@ class ScoringAgent:
         calendar_fn=None,
         correlation_fn=None,
         api_key: Optional[str] = None,
+        model: Optional[str] = None,
     ):
         """
         Args:
             calendar_fn : callable(hours_ahead) → List[dict] événements à venir
             correlation_fn : callable(symbol, keyword) → dict stats corrélation
-            api_key : clé Anthropic (sinon ANTHROPIC_API_KEY env)
+            api_key : clé Anthropic (sinon settings.ANTHROPIC_API_KEY / env)
+            model : ID modèle Claude (sinon settings.AI_SCORING_MODEL)
         """
         self._calendar_fn = calendar_fn or _default_calendar
         self._correlation_fn = correlation_fn or _default_correlation
-        self._client = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
+        key = api_key or settings.ANTHROPIC_API_KEY
+        self._client = anthropic.Anthropic(api_key=key) if key else anthropic.Anthropic()
+        self._model = model or settings.AI_SCORING_MODEL
 
     # ─── public ──────────────────────────────────────────────────────────────
 
@@ -158,8 +162,8 @@ class ScoringAgent:
 
         for _ in range(6):  # max 6 tours
             resp = self._client.messages.create(
-                model=MODEL,
-                max_tokens=1024,
+                model=self._model,
+                max_tokens=4096,
                 system=SYSTEM_PROMPT,
                 tools=TOOLS,
                 messages=messages,

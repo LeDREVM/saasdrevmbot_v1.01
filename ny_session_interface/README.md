@@ -47,10 +47,24 @@ fictives, des signaux, l'équité bouger) sans aucun risque.
 1. Copie **ta vraie** `trading_ny_session.py` à la place du placeholder (ou
    rends-la importable via `app.services.trading_ny_session`).
 2. `pip install MetaTrader5` et connecte le terminal Fusion Markets.
-3. Renseigne au besoin `MT5_LOGIN/PASSWORD/SERVER` dans `ny_session_bot.py`.
+3. Identifiants du compte : soit tu laisses le terminal MT5 **déjà ouvert et
+   loggé** (rien à faire), soit tu renseignes `MT5_LOGIN/MT5_PASSWORD/MT5_SERVER`
+   dans le **`.env`** (jamais dans le code — cf. `env.template`).
 4. `python api.py`, puis ouvre la console.
 5. **Reste en DRY RUN** jusqu'à validation, puis bascule en compte démo, et
-   seulement ensuite en live.
+   seulement ensuite en live. Pour armer l'algo full-auto en LIVE de façon
+   permanente (NSSM), mets `DRY_RUN=0` dans le `.env` ; choisis le risque via
+   `BOT_PROFILE` (SCALPING/BALANCED/CONSERVATIVE/AGGRESSIVE). Kill-switch à tout
+   moment : crée le fichier `STOP.flag` **dans ce dossier** (`ny_session_interface/`,
+   chemin absolu indépendant du cwd ; surchargeable via `KILL_SWITCH_FILE`) — il
+   bloque la boucle auto ET `/api/execute`, même moteur arrêté.
+
+> 🛡️ **Garde-fous P0** : les signaux ne sont évalués que sur **bougie M5
+> clôturée** (no-repaint : bougie en formation exclue + une évaluation par
+> bougie) ; le **halt drawdown journalier** et sa baseline sont **persistés**
+> dans `daily_state.json` — un restart du process ne remet ni le compteur DD à
+> zéro ni un halt actif ; kill-switch et halt DD sont vérifiés aussi dans le
+> chemin API (`/api/execute`), pas seulement dans la boucle.
 
 ## Stratégie — Smart Money Trading System
 
