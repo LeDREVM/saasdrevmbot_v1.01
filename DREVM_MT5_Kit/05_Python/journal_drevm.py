@@ -57,7 +57,7 @@ CHAMPS = [
 ]
 
 GRADES = ["A+", "A", "B", "C", "D"]
-SYMBOLES = ["XAUUSD", "US30", "USDJPY", "CADJPY", "USDCAD"]
+SYMBOLES = ["XAUUSD", "US30", "USDJPY", "CADJPY", "USDCAD", "GBPJPY"]
 SEUIL_VERDICT = 40   # nombre de trades clos avant verdict
 
 
