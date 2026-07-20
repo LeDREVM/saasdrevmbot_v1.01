@@ -49,16 +49,18 @@ def handle_ea(conn: socket.socket, addr):
     log.info(f"[Bridge] EA connected from {addr}")
     try:
         with pending_lock:
-            if pending_signals:
-                signal = pending_signals.pop(0)
-                msg = json.dumps(signal) + '\n'
-                conn.sendall(msg.encode())
-                log.info(f"[Bridge] Sent signal: {signal.get('symbol')} {signal.get('direction')} score={signal.get('score')}")
-                ack = conn.recv(256).decode().strip()
-                log.info(f"[Bridge] EA ack: {ack}")
-                update_signal_status(signal.get('signal_id'), ack)
-            else:
-                conn.sendall(b'NONE\n')
+            signal = pending_signals.pop(0) if pending_signals else None
+
+        if signal:
+            msg = json.dumps(signal) + '\n'
+            conn.sendall(msg.encode())
+            log.info(f"[Bridge] Sent signal: {signal.get('symbol')} {signal.get('direction')} score={signal.get('score')}")
+            # recv() hors du lock : l'EA peut prendre du temps, on ne bloque plus les threads HTTP
+            ack = conn.recv(256).decode().strip()
+            log.info(f"[Bridge] EA ack: {ack}")
+            update_signal_status(signal.get('signal_id'), ack)
+        else:
+            conn.sendall(b'NONE\n')
     except Exception as e:
         log.error(f"[Bridge] {e}")
     finally:
