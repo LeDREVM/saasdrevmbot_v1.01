@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+
+  # ── n8n Automation ────────────────────────────────────────────────
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+      - WEBHOOK_URL=http://${VPS_IP}:5678/
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD:-changeme}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-changethiskey32ch}
+      - GENERIC_TIMEZONE=Europe/Paris
+      - MT5_SERVER_HOST=signal-server
+      - MT5_SERVER_PORT=5000
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      - screenshot-service
+      - signal-server
+    networks:
+      - trading-net
+
+  # ── Screenshot Service (Puppeteer) ───────────────────────────────
+  screenshot-service:
+    build:
+      context: ../n8n/screenshot_service
+      dockerfile: Dockerfile
+    container_name: screenshot-service
+    restart: unless-stopped
+    environment:
+      - SCREENSHOT_PORT=3001
+      - TRADINGVIEW_SESSION_ID=${TRADINGVIEW_SESSION_ID:-}
+    networks:
+      - trading-net
+
+  # ── Signal Server (Python → MT5 bridge) ──────────────────────────
+  signal-server:
+    build:
+      context: ../metatrader
+      dockerfile: Dockerfile
+    container_name: signal-server
+    restart: unless-stopped
+    ports:
+      - "5001:5001"    # Socket EA ↔ Python (accessible depuis MT5)
+    environment:
+      - MT5_SERVER_PORT=5000
+      - MT5_BRIDGE_PORT=5001
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+    networks:
+      - trading-net
+
+networks:
+  trading-net:
+    driver: bridge
+
+volumes:
+  n8n_data:
