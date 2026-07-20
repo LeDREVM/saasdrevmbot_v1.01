@@ -19,3 +19,7 @@ __pycache__/
 
 # Local Netlify folder
 .netlify
+
+# SQLite local DB
+backend/drevmbot.db
+backend/*.db
