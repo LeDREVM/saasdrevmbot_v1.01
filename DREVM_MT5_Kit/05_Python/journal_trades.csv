@@ -1,2 +1,3 @@
 id,horodatage,symbole,timeframe,sens,grade_ea,score_ea,decision,grade_humain,confluences,raison_refus,entry,sl,tp,statut,resultat_R,notes
 1,2026-07-20 04:27,XAUUSD,M5,BUY,,,prise,A+,sweep+OB H1,,2410.5,,,clos,+2.50,
+2,2026-07-20 04:40,XAUUSD,M5,BUY,,,prise,A+,sweep+OB H1,,2410.5,,,ouvert,,
