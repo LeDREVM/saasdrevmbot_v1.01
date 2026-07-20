@@ -23,3 +23,4 @@ __pycache__/
 # SQLite local DB
 backend/drevmbot.db
 backend/*.db
+backend/data/scoring_history.json
