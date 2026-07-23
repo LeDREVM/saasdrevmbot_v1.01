@@ -49,6 +49,9 @@ services:
       DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+      # Sans cette ligne, settings.N8N_WEBHOOK_SECRET vaut None dans le conteneur
+      # et la vérification de l'en-tête X-N8N-Secret est silencieusement désactivée.
+      N8N_WEBHOOK_SECRET: ${N8N_WEBHOOK_SECRET}
     ports:
       - "8000:8000"
     depends_on:
@@ -91,6 +94,7 @@ services:
       DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+      N8N_WEBHOOK_SECRET: ${N8N_WEBHOOK_SECRET}
     depends_on:
       - postgres
       - redis

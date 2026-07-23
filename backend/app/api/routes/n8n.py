@@ -1,4 +1,5 @@
 import logging
+from html import escape as html_escape
 from fastapi import APIRouter, Depends, Query, Header, HTTPException, Body
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -39,9 +40,16 @@ def _impact_emoji(impact: Optional[str]) -> str:
     return {"High": "🔴", "Medium": "🟠", "Low": "🟡"}.get(impact or "", "⚪")
 
 
+def _esc(value: Any) -> str:
+    """Échappe &, < et > — obligatoire avant insertion dans un message Telegram
+    envoyé en parse_mode=HTML (un nom d'événement type "M&A Activity" fait
+    échouer l'API Telegram avec un 400 sinon)."""
+    return html_escape(str(value), quote=False)
+
+
 def _format_telegram_message(date: str, events: List[Dict[str, Any]]) -> str:
     """Construit un message HTML pour Telegram à partir des événements."""
-    lines = [f"📅 <b>Calendrier économique — {date}</b>", ""]
+    lines = [f"📅 <b>Calendrier économique — {_esc(date)}</b>", ""]
 
     if not events:
         lines.append("✅ Aucun événement à fort impact aujourd'hui.")
@@ -50,14 +58,14 @@ def _format_telegram_message(date: str, events: List[Dict[str, Any]]) -> str:
     events = sorted(events, key=lambda e: str(e.get("time") or ""))
     for e in events:
         emoji = _impact_emoji(e.get("impact"))
-        line = f"{emoji} <b>{e.get('time') or '--:--'}</b>  {e.get('currency') or ''} — {e.get('event') or ''}"
+        line = f"{emoji} <b>{_esc(e.get('time') or '--:--')}</b>  {_esc(e.get('currency') or '')} — {_esc(e.get('event') or '')}"
         details = []
         if e.get("forecast"):
-            details.append(f"prév: {e['forecast']}")
+            details.append(f"prév: {_esc(e['forecast'])}")
         if e.get("previous"):
-            details.append(f"préc: {e['previous']}")
+            details.append(f"préc: {_esc(e['previous'])}")
         if e.get("actual"):
-            details.append(f"réel: {e['actual']}")
+            details.append(f"réel: {_esc(e['actual'])}")
         if details:
             line += "\n   <i>" + "  |  ".join(details) + "</i>"
         lines.append(line)
