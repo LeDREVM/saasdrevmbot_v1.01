@@ -16,19 +16,13 @@
 #include <Trade\Trade.mqh>
 CTrade trade;
 
-void UpdatePanel();   // prototype (fonction definie avant OnTick)
-
 //==================================================================//
 //                            ENTRÉES                               //
 //==================================================================//
 input group "=== Général ==="
 input long    InpMagic            = 250701;        // Magic number (distinct du 5K)
 input string  InpComment          = "GX-Micro";    // Commentaire ordres
-input int     InpMaxSpreadPoints  = 0;             // Spread max FIXE en points (0 = desactive)
-input double  InpMaxSpreadAtrPct  = 15.0;          // Spread max en % de l'ATR (0 = desactive)
-// Le seuil fixe en points ne survit pas au changement d'instrument :
-// US30 cote en 0.01 -> un spread normal de 1.6 pt d'indice = 160 points MT5,
-// bloque a vie par un seuil de 40. Le filtre ATR-relatif est portable.
+input int     InpMaxSpreadPoints  = 40;            // Spread max (points)
 input int     InpSlippagePoints   = 20;            // Slippage (points)
 
 enum ENUM_EXEC_MODE { MODE_ALERT_ONLY=0, MODE_PENDING=1, MODE_MARKET=2 };
@@ -72,7 +66,6 @@ input double  InpDailyTargetPct    = 2.0;    // Objectif journalier (% du solde)
 input bool    InpLockOnDailyTarget = true;   // Stopper la journee si atteint
 input int     InpMaxConsecLosses   = 3;      // Pertes consecutives -> stop du jour
 input int     InpMaxTradesPerDay   = 3;      // Plafond de trades par jour
-input bool    InpShowPanel        = true;   // Panneau d'etat sur le graphique
 
 //--- Gestion de position (méthodo DREVM)
 input group "=== Gestion de position ==="
@@ -149,7 +142,7 @@ input double  InpFibProgressMin     = 0.236;       // v3: retracement mini (mode
 //--- Qualité
 input group "=== Qualité du setup ==="
 enum ENUM_MIN_GRADE { GRADE_B=0, GRADE_A=1, GRADE_APLUS=2 };
-input ENUM_MIN_GRADE InpMinGrade  = GRADE_B;       // Note mini (B : avec le scoring v3, A est tres rare)
+input ENUM_MIN_GRADE InpMinGrade  = GRADE_A;       // Note mini (A conseillé en prop)
 
 //==================================================================//
 //                          GLOBALS                                 //
@@ -168,7 +161,6 @@ int      gConsecLosses=0;
 int      gTradesToday=0;
 bool     gLockedDaily=false;   // objectif du jour atteint ou stop-serie
 double   gInitBalance=0;       // solde de reference (persiste aux redemarrages)
-string   gEtat="demarrage";    // derniere raison de blocage / dernier signal (panneau)
 
 //--- Sortie d'analyse
 int    gDir=0, gScore=0, gMaxScore=5;   // v3 : 5 facteurs REELS
@@ -213,16 +205,13 @@ int OnInit()
    // v3 : Wyckoff et R/R sont devenus des FILTRES (rejet) et ne comptent
    //      plus de point. Facteurs reels : Fibo(jambe) + Kijun + RSI (+FVG)(+OB).
    gMaxScore = 3 + (InpUseFVG?1:0) + (InpUseOB?1:0);
-   gEtat="initialise — en attente de la prochaine barre";
-   UpdatePanel();
-   PrintFormat("GX Micro 100 | %s %s | cible jour %.1f%% | risk %.2f%% | mode %d",
-               _Symbol,EnumToString((ENUM_TIMEFRAMES)_Period),InpDailyTargetPct,InpRiskPercent,InpExecMode);
+   PrintFormat("GX 5ers EA | %s %s | cible %.1f%% | risk %.2f%% | mode %d",
+               _Symbol,EnumToString((ENUM_TIMEFRAMES)_Period),InpPhaseTargetPct,InpRiskPercent,InpExecMode);
    return(INIT_SUCCEEDED);
   }
 
 void OnDeinit(const int reason)
   {
-   Comment("");
    IndicatorRelease(hEmaFast); IndicatorRelease(hEmaSlow);
    IndicatorRelease(hIchimoku);IndicatorRelease(hRsi); IndicatorRelease(hAtr);
   }
@@ -737,27 +726,6 @@ double CalcLot(double entry,double sl)
    return lot;
   }
 
-//--- Pont vers journal_drevm.py : chaque signal est appende dans un CSV du
-//    dossier COMMUN du terminal (Terminal\Common\Files\GX_journal_alertes.csv).
-//    Python l'importe avec : python journal_drevm.py import-mt5
-void EcrireJournalCSV(string side,string grade)
-  {
-   string nom="GX_journal_alertes.csv";
-   int h=FileOpen(nom,FILE_READ|FILE_WRITE|FILE_CSV|FILE_COMMON|FILE_ANSI,';');
-   if(h==INVALID_HANDLE)
-     { PrintFormat("Journal CSV inaccessible (err %d)",GetLastError()); return; }
-   FileSeek(h,0,SEEK_END);
-   if(FileTell(h)==0)
-      FileWrite(h,"horodatage","symbole","timeframe","sens","grade_ea","score_ea",
-                  "entry","sl","tp");
-   FileWrite(h,TimeToString(TimeCurrent(),TIME_DATE|TIME_MINUTES),
-             _Symbol,EnumToString((ENUM_TIMEFRAMES)_Period),side,grade,
-             StringFormat("%d/%d",gScore,gMaxScore),
-             DoubleToString(gEntry,_Digits),DoubleToString(gSL,_Digits),
-             DoubleToString(gTP,_Digits));
-   FileClose(h);
-  }
-
 void FireSignal(string grade)
   {
    if(InpForceStopLoss && gSL<=0) return; // SL obligatoire
@@ -775,7 +743,6 @@ void FireSignal(string grade)
    if(InpSendAlert) Alert(msg);
    if(InpSendPush)  SendNotification(msg);
    Print(msg);
-   EcrireJournalCSV(side,grade);
 
    if(InpExecMode==MODE_ALERT_ONLY) return;
    if(InpExecMode==MODE_PENDING)
@@ -877,37 +844,6 @@ void ManagePositions()
 //==================================================================//
 //                            TICK                                  //
 //==================================================================//
-//==================================================================//
-//  PANNEAU D'ETAT — l'EA doit etre OBSERVABLE (lecon : muet = suspect)//
-//==================================================================//
-void UpdatePanel()
-  {
-   if(!InpShowPanel){ Comment(""); return; }
-   double bal=AccountInfoDouble(ACCOUNT_BALANCE);
-   double eq =AccountInfoDouble(ACCOUNT_EQUITY);
-   double pnlJour=(gDayBaseline>0)?(eq-gDayBaseline):0.0;
-   string mode=(InpExecMode==MODE_ALERT_ONLY)?"ALERTE SEULE":
-               (InpExecMode==MODE_PENDING)?"ORDRE LIMITE":"MARCHE";
-   string sess=InSession()?"OUI":"non";
-   string verrous="";
-   if(gLockedTotal)  verrous+="DD-TOTAL ";
-   if(gLockedDaily)  verrous+="JOURNEE ";
-   if(gLockedTarget) verrous+="CIBLE ";
-   if(verrous=="")   verrous="aucun";
-
-   Comment(StringFormat(
-     "GX MICRO 100  |  %s %s  |  mode %s\n"
-     "Solde %.2f  Equity %.2f  |  Jour %+.2f (cible +%.1f%%)\n"
-     "Session active: %s  |  Trades jour: %d/%d  |  Pertes consec.: %d/%d\n"
-     "Verrous: %s\n"
-     "Dernier scan [%s]: %s",
-     _Symbol,EnumToString((ENUM_TIMEFRAMES)_Period),mode,
-     bal,eq,pnlJour,InpDailyTargetPct,
-     sess,gTradesToday,InpMaxTradesPerDay,gConsecLosses,InpMaxConsecLosses,
-     verrous,
-     TimeToString(TimeCurrent(),TIME_MINUTES),gEtat));
-  }
-
 void OnTick()
   {
    UpdateDayBaseline();
@@ -921,44 +857,20 @@ void OnTick()
 
    if(!IsNewBar()) return;
    ScanDayHistory();              // micro-compte : trades + serie de pertes
-
-   if(!InSession())
-     { gEtat="hors session"; UpdatePanel(); return; }
-   if(!RiskGuardOK())
-     { gEtat="verrou de risque actif"; UpdatePanel(); return; }
-   if(!MicroGuardOK())
-     { gEtat="verrou journalier (cible/serie/plafond)"; UpdatePanel(); return; }
-   if(CountMyTrades()>=InpMaxOpenTrades)
-     { gEtat="position deja ouverte"; UpdatePanel(); return; }
-   {
-      long   spPts=SymbolInfoInteger(_Symbol,SYMBOL_SPREAD);
-      double spPx =spPts*_Point;
-      double atrSp=Buf(hAtr,0,1);
-      if(InpMaxSpreadPoints>0 && spPts>InpMaxSpreadPoints)
-        { gEtat=StringFormat("spread %d pts > max fixe %d",(int)spPts,InpMaxSpreadPoints);
-          UpdatePanel(); return; }
-      if(InpMaxSpreadAtrPct>0 && atrSp>0 && spPx>atrSp*InpMaxSpreadAtrPct/100.0)
-        { gEtat=StringFormat("spread %.1f%% de l'ATR > max %.0f%%",
-                spPx/atrSp*100.0,InpMaxSpreadAtrPct);
-          UpdatePanel(); return; }
-   }
+   if(!InSession()) return;
+   if(!RiskGuardOK()) return;
+   if(!MicroGuardOK()) return;
+   if(CountMyTrades()>=InpMaxOpenTrades) return;
+   if(SymbolInfoInteger(_Symbol,SYMBOL_SPREAD)>InpMaxSpreadPoints) return;
 
    Analyze();
-   if(gDir==0)
-     { gEtat="pas de biais ("+gPhase+")"; UpdatePanel(); return; }
+   if(gDir==0) return;
    string grade=GradeFromScore(gScore);
-   if(gScore<MinScore(InpMinGrade))
-     { gEtat=StringFormat("signal %s %d/%d [%s] sous le grade mini",
-             (gDir==1?"BUY":"SELL"),gScore,gMaxScore,grade);
-       UpdatePanel(); return; }
-   if(gEntry<=0||gSL<=0||gTP<=0)
-     { gEtat="niveaux invalides"; UpdatePanel(); return; }
+   if(gScore<MinScore(InpMinGrade)) return;
+   if(gEntry<=0||gSL<=0||gTP<=0) return;
 
-   if(lastAlertBar==lastBarTime){ UpdatePanel(); return; }
+   if(lastAlertBar==lastBarTime) return;
    lastAlertBar=lastBarTime;
-   gEtat=StringFormat("SIGNAL %s [%s] %d/%d envoye",
-                      (gDir==1?"BUY":"SELL"),grade,gScore,gMaxScore);
-   UpdatePanel();
    FireSignal(grade);
   }
 

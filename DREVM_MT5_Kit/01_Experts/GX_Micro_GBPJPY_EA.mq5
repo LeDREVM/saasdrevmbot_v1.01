@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//|                                        GX_Micro100_EA.mq5         |
+//|                                     GX_Micro_GBPJPY_EA.mq5        |
 //|              Stratégie Négus Dja — optimisée The5ers 5K HighStakes|
 //|  Confluence v3 : Fibo(jambe) + Kijun + RSI + FVG-zone + OB-zone   |
 //|  v3 : FVG/OB doivent CONTENIR l'entree ; R/R et Wyckoff = filtres |
@@ -10,20 +10,22 @@
 #property copyright "Negus Dja"
 #property version   "1.00"
 #property strict
-#property description "EA confluence DREVM adapte MICRO-COMPTE (100-500 USD)."
-#property description "Refuse le trade si le lot minimum depasse le risque autorise."
+#property description "GX Micro adapte GBPJPY : buy/sell limit sur repli, SL structurel."
+#property description "SL structurels JPY = 40-70 pips -> plafond 2.5%, SL max affiche au panneau."
 
 #include <Trade\Trade.mqh>
 CTrade trade;
 
-void UpdatePanel();   // prototype (fonction definie avant OnTick)
+void UpdatePanel();          // prototypes (definitions plus bas)
+double MaxSLDistancePrice();
+double PipSize();
 
 //==================================================================//
 //                            ENTRÉES                               //
 //==================================================================//
 input group "=== Général ==="
-input long    InpMagic            = 250701;        // Magic number (distinct du 5K)
-input string  InpComment          = "GX-Micro";    // Commentaire ordres
+input long    InpMagic            = 250702;        // Magic number (variante GBPJPY)
+input string  InpComment          = "GX-GJ";       // Commentaire ordres
 input int     InpMaxSpreadPoints  = 0;             // Spread max FIXE en points (0 = desactive)
 input double  InpMaxSpreadAtrPct  = 15.0;          // Spread max en % de l'ATR (0 = desactive)
 // Le seuil fixe en points ne survit pas au changement d'instrument :
@@ -66,7 +68,7 @@ input bool    InpForceStopLoss    = true;          // SL obligatoire
 //  L'EA REFUSE alors le trade au lieu de sur-risquer en silence.    //
 //==================================================================//
 input group "=== Micro-compte ==="
-input double  InpHardMaxRiskPct    = 2.0;    // Risque MAX absolu par trade (%)
+input double  InpHardMaxRiskPct    = 2.5;    // Risque MAX par trade (%) — JPY: SL structurels larges
 input bool    InpRefuseIfLotTooBig = true;   // Refuser si lot mini > risque max
 input double  InpDailyTargetPct    = 2.0;    // Objectif journalier (% du solde)
 input bool    InpLockOnDailyTarget = true;   // Stopper la journee si atteint
@@ -87,10 +89,10 @@ input double  InpTrailAtrMult       = 1.5;         // Distance trailing (x ATR)
 //--- Sessions (heure serveur)
 input group "=== Sessions ==="
 input bool    InpUseSession       = true;          // Activer filtre session
-input int     InpLondonStart      = 8;
-input int     InpLondonEnd        = 12;
-input int     InpNYStart          = 13;
-input int     InpNYEnd            = 21;
+input int     InpLondonStart      = 10;  // Londres (serveur GMT+3)
+input int     InpLondonEnd        = 14;
+input int     InpNYStart          = 15;  // overlap Londres/NY
+input int     InpNYEnd            = 19;
 
 //--- FILTRE NEWS (The5ers : interdit ±2 min, on prend une marge)
 input group "=== Filtre News ==="
@@ -133,7 +135,7 @@ input int     InpSwingLookback    = 60;
 input double  InpFibZoneMin       = 0.50;
 input double  InpFibZoneMax       = 0.886;
 input double  InpFibEntry         = 0.618;
-input double  InpFibStopBufATR    = 0.5;           // Tampon SL au-delà du swing (x ATR)
+input double  InpFibStopBufATR    = 0.7;           // Tampon SL (x ATR) — meches JPY chassent les stops courts
 // v3 : le facteur Fibo est structurellement bride par l'entree limite fixe.
 //  ZONE_ATTEINTE  : point si le retracement ACTUEL est dans [Min,Max].
 //                   Mais un BuyLimit a 61.8% exige que le prix soit AU-DESSUS
@@ -715,9 +717,10 @@ double CalcLot(double entry,double sl)
          if(InpRefuseIfLotTooBig)
            {
             PrintFormat("⛔ TRADE REFUSE | lot mini %.2f => risque %.2f %s (%.1f%% du solde) "
-                        "> plafond %.1f%%. Instrument trop gros pour ce compte.",
+                        "> plafond %.1f%%. SL max finançable: %.0f pips (demande: %.0f).",
                         minLot,perteMini,AccountInfoString(ACCOUNT_CURRENCY),
-                        perteMini/bal*100.0,InpHardMaxRiskPct);
+                        perteMini/bal*100.0,InpHardMaxRiskPct,
+                        MaxSLDistancePrice()/PipSize(),dist/PipSize());
             return 0.0;
            }
          PrintFormat("⚠️ Lot mini impose %.1f%% de risque (plafond %.1f%%).",
@@ -877,6 +880,28 @@ void ManagePositions()
 //==================================================================//
 //                            TICK                                  //
 //==================================================================//
+//--- GBPJPY : distance de SL maximale finançable AU LOT MINIMUM sous le
+//    plafond de risque. Sur ~150 EUR a 2.5%, cela donne ~65 pips : c'est le
+//    budget reel de SL structurel. Affiche au panneau pour guider aussi les
+//    ordres MANUELS (l'ordre 0.1 lot / 54 pips vu le 20/07 = 21% du compte).
+double MaxSLDistancePrice()
+  {
+   double bal=AccountInfoDouble(ACCOUNT_BALANCE);
+   double capMoney=bal*InpHardMaxRiskPct/100.0;
+   double minLot=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
+   double tv=SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_VALUE);
+   double ts=SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_SIZE);
+   if(minLot<=0||tv<=0||ts<=0) return 0.0;
+   double lossPerPriceUnit=(1.0/ts)*tv*minLot;   // perte par unite de prix, lot mini
+   if(lossPerPriceUnit<=0) return 0.0;
+   return capMoney/lossPerPriceUnit;             // distance de SL en prix
+  }
+double PipSize()
+  {
+   int d=(int)SymbolInfoInteger(_Symbol,SYMBOL_DIGITS);
+   return (d==3||d==5)?10*_Point:_Point;
+  }
+
 //==================================================================//
 //  PANNEAU D'ETAT — l'EA doit etre OBSERVABLE (lecon : muet = suspect)//
 //==================================================================//
@@ -899,12 +924,12 @@ void UpdatePanel()
      "GX MICRO 100  |  %s %s  |  mode %s\n"
      "Solde %.2f  Equity %.2f  |  Jour %+.2f (cible +%.1f%%)\n"
      "Session active: %s  |  Trades jour: %d/%d  |  Pertes consec.: %d/%d\n"
-     "Verrous: %s\n"
+     "Verrous: %s  |  SL max finançable (lot mini): %.0f pips\n"
      "Dernier scan [%s]: %s",
      _Symbol,EnumToString((ENUM_TIMEFRAMES)_Period),mode,
      bal,eq,pnlJour,InpDailyTargetPct,
      sess,gTradesToday,InpMaxTradesPerDay,gConsecLosses,InpMaxConsecLosses,
-     verrous,
+     verrous,MaxSLDistancePrice()/PipSize(),
      TimeToString(TimeCurrent(),TIME_MINUTES),gEtat));
   }
 
