@@ -10,7 +10,10 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "SaaS DrevmBot"
     
     # Database
-    DATABASE_URL: str = "postgresql://user:password@localhost:5432/drevmbot"
+    # Défaut : SQLite local (aucune installation requise) — idéal pour l'app desktop.
+    # En production, définir DATABASE_URL (env var) vers Postgres, ex :
+    #   postgresql://user:password@localhost:5432/drevmbot
+    DATABASE_URL: str = "sqlite:///./drevmbot.db"
     
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"

@@ -237,8 +237,8 @@ async def get_alert_config():
     """
     
     return JSONResponse(content={
-        "discord_webhook": bool(settings.DISCORD_WEBHOOK),
-        "telegram_enabled": bool(settings.TELEGRAM_TOKEN and settings.TELEGRAM_CHAT_ID),
+        "discord_webhook": bool(settings.DISCORD_WEBHOOK_URL),
+        "telegram_enabled": bool(settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_CHAT_ID),
         "schedules": {
             "check_upcoming": "Toutes les 30 minutes",
             "daily_summary": "06:00 (Guadeloupe)",

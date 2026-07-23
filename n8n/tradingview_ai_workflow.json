@@ -27,7 +27,7 @@
     },
     {
       "parameters": {
-        "url": "=http://localhost:3001/screenshot",
+        "url": "=http://screenshot-service:3001/screenshot",
         "sendBody": true,
         "bodyParameters": {
           "parameters": [

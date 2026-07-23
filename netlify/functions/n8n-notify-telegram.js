@@ -17,19 +17,31 @@ function impactEmoji(impact) {
   return { High: '🔴', Medium: '🟠', Low: '🟡' }[impact] || '⚪';
 }
 
+/**
+ * Échappe &, < et > — obligatoire avant insertion dans un message Telegram
+ * envoyé en parse_mode=HTML (un nom d'événement type "M&A Activity" fait
+ * échouer l'API Telegram avec un 400 sinon).
+ */
+function esc(value) {
+  return String(value === null || value === undefined ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 function formatMessage(date, events) {
-  const lines = [`📅 <b>Calendrier économique — ${date}</b>`, ''];
+  const lines = [`📅 <b>Calendrier économique — ${esc(date)}</b>`, ''];
   if (!events.length) {
     lines.push("✅ Aucun événement à fort impact aujourd'hui.");
     return lines.join('\n');
   }
   const sorted = [...events].sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
   for (const e of sorted) {
-    let line = `${impactEmoji(e.impact)} <b>${e.time || '--:--'}</b>  ${e.currency || ''} — ${e.event || ''}`;
+    let line = `${impactEmoji(e.impact)} <b>${esc(e.time || '--:--')}</b>  ${esc(e.currency || '')} — ${esc(e.event || '')}`;
     const details = [];
-    if (e.forecast) details.push(`prév: ${e.forecast}`);
-    if (e.previous) details.push(`préc: ${e.previous}`);
-    if (e.actual) details.push(`réel: ${e.actual}`);
+    if (e.forecast) details.push(`prév: ${esc(e.forecast)}`);
+    if (e.previous) details.push(`préc: ${esc(e.previous)}`);
+    if (e.actual) details.push(`réel: ${esc(e.actual)}`);
     if (details.length) line += `\n   <i>${details.join('  |  ')}</i>`;
     lines.push(line);
   }
