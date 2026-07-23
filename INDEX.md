@@ -1,198 +1,126 @@
-# 📚 Index de la Documentation
+# 📚 Index de la Documentation — SaaS DrevmBot
 
-Bienvenue dans la documentation du projet **SaaS DrevmBot** !
+> Documentation réorganisée le 12 juillet 2026 : tous les guides sont désormais dans `docs/`.
 
 ## 🎯 Par où commencer ?
 
-### 🚀 Vous voulez démarrer rapidement ?
-➡️ **[QUICKSTART.md](QUICKSTART.md)** - Guide de démarrage en 5 minutes  
-➡️ **[GUIDE_DEMARRAGE_RAPIDE.md](GUIDE_DEMARRAGE_RAPIDE.md)** - Trading Economics en 5 minutes
+➡️ **[docs/guides/QUICKSTART.md](docs/guides/QUICKSTART.md)** — Installation en 5 minutes
+➡️ **[docs/guides/GUIDE_DEMARRAGE_RAPIDE.md](docs/guides/GUIDE_DEMARRAGE_RAPIDE.md)** — Trading Economics en 5 minutes
+➡️ **[README.md](README.md)** — Documentation principale complète
 
-### 📖 Vous voulez comprendre le projet ?
-➡️ **[README.md](README.md)** - Documentation principale complète
+## 🗂️ Arborescence du projet
 
-### 📦 Vous voulez vérifier les dépendances ?
-➡️ **[SYNTHESE_DEPENDANCES.md](SYNTHESE_DEPENDANCES.md)** - Synthèse en français  
-➡️ **[DEPENDENCIES.md](DEPENDENCIES.md)** - Documentation détaillée
+```
+saasdrevmbot_v1.01/
+├── backend/               FastAPI (port 8000)
+├── frontend/              SvelteKit (port 5173)
+├── src/                   Node/Express/Socket.io — bot Discord + dashboard (port 3000)
+├── trading_bot/           Bot Python (backtest, MT5, divergences)
+├── ny_session_interface/  Bot session NY + PineScript
+├── mql/                   Experts MQL5 (MT5)
+├── n8n/                   Workflows n8n (calendrier éco, alertes, retrain)
+├── calendar/              Calendrier économique
+├── data/                  Données (events_log.json, watchlist CSV)
+├── deploy/                Services systemd + setup VPS
+├── scripts/               Scripts utilitaires (.sh / .bat / .py)
+├── docs/                  📚 Toute la documentation
+│   ├── guides/            Guides d'utilisation et référence technique
+│   ├── deploiement/       Docker, Netlify, déploiement rapide
+│   ├── integrations/      Discord, Telegram, Nextcloud, Trading Economics
+│   └── reports/           Rapports de test et de vérification
+├── resources/             Ressources trading (PDF, template xlsx FTMO)
+├── archive/               Zips d'intégration en attente (copy trading, comptes)
+├── examples/              Exemples de scoring
+├── netlify/ · supabase/   Functions & migrations
+└── claude-config-kit-drevm/  Config Claude
+```
 
-### 🗂️ Vous voulez voir la structure ?
-➡️ **[STRUCTURE_PROJET.md](STRUCTURE_PROJET.md)** - Arborescence complète
+## 📋 Documents par catégorie
 
-### ✅ Vous voulez le rapport de vérification ?
-➡️ **[VERIFICATION_COMPLETE.md](VERIFICATION_COMPLETE.md)** - Rapport complet
+### 🚀 Démarrage & référence (`docs/guides/`)
+| Document | Description |
+|----------|-------------|
+| [QUICKSTART.md](docs/guides/QUICKSTART.md) | Installation en 5 minutes |
+| [GUIDE_DEMARRAGE_RAPIDE.md](docs/guides/GUIDE_DEMARRAGE_RAPIDE.md) | Trading Economics rapide |
+| [STRUCTURE_PROJET.md](docs/guides/STRUCTURE_PROJET.md) | Arborescence complète |
+| [API_ENDPOINTS.md](docs/guides/API_ENDPOINTS.md) | Endpoints de l'API |
+| [CONFIGURATION.md](docs/guides/CONFIGURATION.md) | Guide de configuration |
+| [DEPENDENCIES.md](docs/guides/DEPENDENCIES.md) | Dépendances détaillées + troubleshooting |
+| [SYNTHESE_DEPENDANCES.md](docs/guides/SYNTHESE_DEPENDANCES.md) | Synthèse des dépendances (FR) |
+| [GUIDE_DASHBOARD_TRADING_ECONOMICS.md](docs/guides/GUIDE_DASHBOARD_TRADING_ECONOMICS.md) | Dashboard Trading Economics |
+| [GUIDE_NAVIGATION_RESPONSIVE.md](docs/guides/GUIDE_NAVIGATION_RESPONSIVE.md) | Navigation responsive |
+| [TIMELINE_COMPONENT_DOC.md](docs/guides/TIMELINE_COMPONENT_DOC.md) | Composant Timeline |
 
-## 📋 Documents par Catégorie
+### 🚢 Déploiement (`docs/deploiement/`)
+| Document | Description |
+|----------|-------------|
+| [DEPLOIEMENT_RAPIDE.md](docs/deploiement/DEPLOIEMENT_RAPIDE.md) | Déploiement express |
+| [DOCKER_DEPLOYMENT.md](docs/deploiement/DOCKER_DEPLOYMENT.md) | Déploiement Docker Hub |
+| [NETLIFY_DEPLOYMENT_GUIDE.md](docs/deploiement/NETLIFY_DEPLOYMENT_GUIDE.md) | Guide Netlify |
+| [README_NETLIFY.md](docs/deploiement/README_NETLIFY.md) | Référence Netlify |
 
-### 🎯 Démarrage
-| Document | Description | Niveau |
-|----------|-------------|--------|
-| [QUICKSTART.md](QUICKSTART.md) | Installation en 5 minutes | ⭐ Débutant |
-| [README.md](README.md) | Documentation complète | ⭐⭐ Intermédiaire |
-| [backend/README.md](backend/README.md) | Documentation backend | ⭐⭐ Intermédiaire |
-| [frontend/README.md](frontend/README.md) | Documentation frontend | ⭐⭐ Intermédiaire |
+### 🔌 Intégrations (`docs/integrations/`)
+| Document | Description |
+|----------|-------------|
+| [DISCORD_SETUP_GUIDE.md](docs/integrations/DISCORD_SETUP_GUIDE.md) | Setup Discord |
+| [TELEGRAM_SETUP_GUIDE.md](docs/integrations/TELEGRAM_SETUP_GUIDE.md) | Setup Telegram |
+| [NEXTCLOUD_INTEGRATION.md](docs/integrations/NEXTCLOUD_INTEGRATION.md) | Intégration Nextcloud |
+| [NEXTCLOUD_QUICKSTART.md](docs/integrations/NEXTCLOUD_QUICKSTART.md) | Nextcloud rapide |
+| [TRADING_ECONOMICS_SETUP.md](docs/integrations/TRADING_ECONOMICS_SETUP.md) | Setup Trading Economics |
 
-### 📦 Dépendances
-| Document | Description | Détail |
-|----------|-------------|--------|
-| [SYNTHESE_DEPENDANCES.md](SYNTHESE_DEPENDANCES.md) | Synthèse en français | ✅ Complet |
-| [DEPENDENCIES.md](DEPENDENCIES.md) | Liste détaillée + troubleshooting | ✅ Complet |
-| [backend/requirements.txt](backend/requirements.txt) | Dépendances Python | 23 packages |
-| [frontend/package.json](frontend/package.json) | Dépendances Node.js | 16 packages |
+### ✅ Rapports (`docs/reports/`)
+| Document | Description |
+|----------|-------------|
+| [VERIFICATION_COMPLETE.md](docs/reports/VERIFICATION_COMPLETE.md) | Vérification complète |
+| [VERIFICATION_BASE_SCRAPER.md](docs/reports/VERIFICATION_BASE_SCRAPER.md) | Vérification scraper |
+| [INSTALLATION_SUCCESS.md](docs/reports/INSTALLATION_SUCCESS.md) | Rapport d'installation |
+| [DISCORD_TEST_REPORT.md](docs/reports/DISCORD_TEST_REPORT.md) | Tests Discord |
+| [TELEGRAM_TEST_REPORT.md](docs/reports/TELEGRAM_TEST_REPORT.md) | Tests Telegram |
+| [FRONTEND_TEST_REPORT.md](docs/reports/FRONTEND_TEST_REPORT.md) | Tests frontend |
+| [RESUME_TRADING_ECONOMICS.md](docs/reports/RESUME_TRADING_ECONOMICS.md) | Résumé Trading Economics |
 
-### 🏗️ Architecture
-| Document | Description | Contenu |
-|----------|-------------|---------|
-| [STRUCTURE_PROJET.md](STRUCTURE_PROJET.md) | Arborescence complète | 32+ fichiers |
-| [VERIFICATION_COMPLETE.md](VERIFICATION_COMPLETE.md) | Rapport vérification | Checklist |
-| [docker-compose.yml](docker-compose.yml) | Services Docker | 5 conteneurs |
+## 🛠️ Scripts utilitaires (`scripts/`)
 
-### ⚙️ Configuration
-| Fichier | Description | Emplacement |
-|---------|-------------|-------------|
-| [backend/env.template](backend/env.template) | Variables d'environnement | Backend |
-| [CONFIGURATION.md](CONFIGURATION.md) | Guide configuration complet | Racine |
-| [NEXTCLOUD_INTEGRATION.md](NEXTCLOUD_INTEGRATION.md) | Intégration Nextcloud | Racine |
-| [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md) | Déploiement Docker Hub | Racine |
-| [backend/.gitignore](backend/.gitignore) | Exclusions Git backend | Backend |
-| [frontend/.gitignore](frontend/.gitignore) | Exclusions Git frontend | Frontend |
-| [backend/Dockerfile](backend/Dockerfile) | Image Docker backend | Backend |
-| [frontend/Dockerfile](frontend/Dockerfile) | Image Docker frontend | Frontend |
+| Script | Usage |
+|--------|-------|
+| `deploy-netlify.sh` / `.bat` | Déploiement Netlify |
+| `docker-build-push.sh` / `.bat` | Build & push Docker |
+| `setup-termux.sh` | Installation Termux (Android) |
+| `start_daily_worker.py` / `.bat` | Worker quotidien |
+| `test_trading_economics.py` / `.bat` | Test API Trading Economics |
 
-## 🔍 Recherche Rapide
+## 🔍 Recherche rapide
 
-### Par Technologie
-
-#### Python / Backend
+### Python / Backend
 - **FastAPI** : [backend/main.py](backend/main.py)
 - **Configuration** : [backend/app/core/config.py](backend/app/core/config.py)
-- **Database** : [backend/app/core/database.py](backend/app/core/database.py)
-- **Modèles** : [backend/app/models/database.py](backend/app/models/database.py)
 - **API Routes** : [backend/app/api/routes/](backend/app/api/routes/)
 - **Services** : [backend/app/services/](backend/app/services/)
 
-#### Svelte / Frontend
+### Svelte / Frontend
 - **Configuration** : [frontend/svelte.config.js](frontend/svelte.config.js)
-- **Vite** : [frontend/vite.config.js](frontend/vite.config.js)
 - **Pages** : [frontend/src/routes/](frontend/src/routes/)
-- **Calendrier** : [frontend/src/routes/calendar/](frontend/src/routes/calendar/)
-- **Statistiques** : [frontend/src/routes/stats/](frontend/src/routes/stats/)
 
-#### Docker
+### Docker
 - **Compose Dev** : [docker-compose.yml](docker-compose.yml)
 - **Compose Prod** : [docker-compose.prod.yml](docker-compose.prod.yml)
-- **Backend Image** : [backend/Dockerfile](backend/Dockerfile)
-- **Frontend Image** : [frontend/Dockerfile](frontend/Dockerfile)
-- **Build & Push** : [docker-build-push.sh](docker-build-push.sh) / [docker-build-push.bat](docker-build-push.bat)
-- **Guide Déploiement** : [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md)
+- **Build & Push** : [scripts/docker-build-push.sh](scripts/docker-build-push.sh)
 
-### Par Fonctionnalité
+### Fonctionnalités
+- **Calendrier éco** : [backend/app/services/economic_calendar/](backend/app/services/economic_calendar/) · [backend/app/api/routes/calendar.py](backend/app/api/routes/calendar.py)
+- **Stats & corrélations** : [backend/app/services/stats/](backend/app/services/stats/)
+- **Alertes** : [backend/app/services/alerts/](backend/app/services/alerts/) · [backend/app/workers/alert_worker.py](backend/app/workers/alert_worker.py)
 
-#### 📅 Calendrier Économique
-- **Scrapers** : [backend/app/services/economic_calendar/](backend/app/services/economic_calendar/)
-- **API** : [backend/app/api/routes/calendar.py](backend/app/api/routes/calendar.py)
-- **Interface** : [frontend/src/routes/calendar/](frontend/src/routes/calendar/)
+## 📦 Notes de réorganisation (12/07/2026)
 
-#### 📊 Statistiques & Analyse
-- **Corrélation** : [backend/app/services/stats/correlation_analyzer.py](backend/app/services/stats/correlation_analyzer.py)
-- **Prix** : [backend/app/services/stats/price_fetcher.py](backend/app/services/stats/price_fetcher.py)
-- **Impact** : [backend/app/services/stats/impact_calculator.py](backend/app/services/stats/impact_calculator.py)
-- **API** : [backend/app/api/routes/stats.py](backend/app/api/routes/stats.py)
-- **Interface** : [frontend/src/routes/stats/](frontend/src/routes/stats/)
-
-#### 🔔 Alertes & Notifications
-- **Prédictions** : [backend/app/services/alerts/alert_predictor.py](backend/app/services/alerts/alert_predictor.py)
-- **Notifications** : [backend/app/services/alerts/notification_manager.py](backend/app/services/alerts/notification_manager.py)
-- **Export MD** : [backend/app/services/alerts/markdown_exporter.py](backend/app/services/alerts/markdown_exporter.py)
-- **Worker** : [backend/app/workers/alert_worker.py](backend/app/workers/alert_worker.py)
-
-## 🎓 Tutoriels
-
-### Installation
-1. Lire [QUICKSTART.md](QUICKSTART.md)
-2. Suivre les étapes Docker ou manuelle
-3. Configurer les variables d'environnement
-4. Tester les endpoints
-
-### Développement
-1. Lire [backend/README.md](backend/README.md) et [frontend/README.md](frontend/README.md)
-2. Installer les dépendances
-3. Lancer en mode développement
-4. Consulter [STRUCTURE_PROJET.md](STRUCTURE_PROJET.md) pour l'architecture
-
-### Déploiement
-1. Configurer les variables de production
-2. Utiliser Docker Compose
-3. Configurer un reverse proxy (Nginx)
-4. Activer HTTPS
-
-## 📊 Statistiques du Projet
-
-- **Total fichiers** : 32+ fichiers
-- **Lignes de code** : ~3,400 lignes
-- **Lignes documentation** : ~1,750 lignes
-- **Dépendances Python** : 23 packages
-- **Dépendances Node.js** : 16 packages
-- **Services Docker** : 5 conteneurs
-- **Endpoints API** : 12 endpoints
-- **Pages frontend** : 2 routes principales
-- **Composants Svelte** : 7 composants
-
-## 🔗 Liens Utiles
-
-### Documentation Externe
-- [FastAPI Docs](https://fastapi.tiangolo.com/)
-- [SvelteKit Docs](https://kit.svelte.dev/)
-- [SQLAlchemy Docs](https://docs.sqlalchemy.org/)
-- [Redis Docs](https://redis.io/docs/)
-- [Celery Docs](https://docs.celeryq.dev/)
-
-### APIs Utilisées
-- [ForexFactory](https://www.forexfactory.com/calendar)
-- [Investing.com](https://www.investing.com/economic-calendar/)
-- [Yahoo Finance](https://finance.yahoo.com/)
-
-### Outils
-- [Discord Webhooks](https://discord.com/developers/docs/resources/webhook)
-- [Telegram Bot API](https://core.telegram.org/bots/api)
-
-## ❓ FAQ
-
-### Comment installer le projet ?
-➡️ Voir [QUICKSTART.md](QUICKSTART.md)
-
-### Quelles sont les dépendances ?
-➡️ Voir [DEPENDENCIES.md](DEPENDENCIES.md) ou [SYNTHESE_DEPENDANCES.md](SYNTHESE_DEPENDANCES.md)
-
-### Comment configurer les alertes ?
-➡️ Voir [QUICKSTART.md](QUICKSTART.md) section "Configuration des alertes"
-
-### Où sont les endpoints API ?
-➡️ Voir [backend/app/api/routes/](backend/app/api/routes/) ou http://localhost:8000/api/docs
-
-### Comment ajouter un symbole ?
-➡️ Éditer [backend/app/services/stats/price_fetcher.py](backend/app/services/stats/price_fetcher.py)
-
-### Comment personnaliser les seuils d'alerte ?
-➡️ Éditer [backend/app/services/alerts/alert_predictor.py](backend/app/services/alerts/alert_predictor.py)
-
-## 🆘 Support
-
-En cas de problème :
-1. Consulter [QUICKSTART.md](QUICKSTART.md) section "Troubleshooting"
-2. Vérifier les logs : `docker-compose logs -f`
-3. Consulter [DEPENDENCIES.md](DEPENDENCIES.md) section "Troubleshooting"
-4. Ouvrir une issue sur GitHub
-
-## 📝 Contribution
-
-Pour contribuer au projet :
-1. Lire [STRUCTURE_PROJET.md](STRUCTURE_PROJET.md) pour comprendre l'architecture
-2. Suivre les conventions de code
-3. Tester les modifications
-4. Mettre à jour la documentation si nécessaire
+- **Watchlist CSV** → `data/Portefeuille_Watchlist_03162026.csv` (chemin mis à jour dans `backend/app/core/config.py`)
+- **PineScript** `ICT_RSI_Wyckoff.pine` → `ny_session_interface/pinescripttradingview/`
+- **MQL5** `NY_Wyckoff_FVG_OB_Fib.mq5` → `mql/`
+- **PDF & xlsx trading** → `resources/`
+- **`workflown8n/ufu.json`** → `n8n/workflows/` (dossier `workflown8n/` vide, à supprimer manuellement)
+- **`archive/`** : `files.zip` (module copy trading) et `files done.zip` (gestion de comptes) — code d'intégration **pas encore présent dans le repo**, à intégrer ou supprimer
 
 ---
 
-**Dernière mise à jour** : 6 février 2026  
-**Version** : 1.0.0  
-**Statut** : ✅ Production Ready
+**Dernière mise à jour** : 12 juillet 2026
+**Version** : 1.0.1

@@ -1,140 +1,146 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NY Session Bot — Console</title>
-  <link rel="stylesheet" href="/static/style.css" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DREVM — Console NY Session</title>
+  <!-- Chemins RELATIFS : la console fonctionne à la racine (:8800) ET derrière
+       un proxy sous-chemin (ex. Netlify /bot/ → VPS). -->
+  <link rel="stylesheet" href="static/style.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <span class="logo">◆</span>
-      <h1>NY Session Bot</h1>
-      <span id="badge-mode" class="badge badge-sim">—</span>
+
+  <!-- ══ 1 · Barre de commande (sticky) ══ -->
+  <header class="cmd">
+    <div class="mode">
+      <b id="badge-mode" class="mode-sim">—</b>
+      <small id="badge-dry" class="dry-on">—</small>
     </div>
-    <div class="status-cluster">
-      <span id="badge-conn" class="badge">déconnecté</span>
-      <span id="badge-tg" class="badge">Telegram off</span>
-      <span id="badge-dry" class="badge">—</span>
-      <span id="badge-session" class="badge">session ?</span>
-      <span id="badge-run" class="pill pill-off">ARRÊTÉ</span>
+
+    <div class="badges">
+      <span id="badge-run" class="badge">—</span>
+      <span id="badge-conn" class="badge"><span class="dot"></span><em>MT5</em></span>
+      <span id="badge-session" class="badge"><span class="dot"></span><em>session ?</em></span>
+      <span id="badge-src" class="badge" hidden><span class="dot dot-fvg"></span><em>prix</em></span>
+      <span id="badge-nextbar" class="badge" title="Prochaine bougie M5 clôturée (gating new-bar)">Éval M5 · <b class="num" id="v-nextbar">—</b></span>
+      <span id="badge-tg" class="badge"><span class="dot"></span><em>Telegram</em></span>
     </div>
+
+    <div class="actions">
+      <select id="sel-profile" title="Profil de risque"></select>
+      <label class="switch" title="DRY RUN : aucun ordre réel tant que coché">
+        <input type="checkbox" id="tg-dry" /> DRY RUN
+      </label>
+      <button id="btn-start" class="btn btn-start">▶ Démarrer</button>
+      <button id="btn-stop" class="btn btn-stop">⏹ Arrêter</button>
+      <label class="switch kill" title="Kill-switch STOP.flag : bloque toute nouvelle entrée (boucle + API)">
+        <input type="checkbox" id="tg-kill" /> 🛑 STOP.flag
+      </label>
+      <button id="btn-closeall" class="btn btn-danger">✕ Fermer tout</button>
+      <input id="inp-token" type="password" placeholder="API token" autocomplete="off" />
+    </div>
+    <span id="msg" class="msg" role="status"></span>
   </header>
 
+  <nav id="dash-nav" class="dash-nav" aria-label="Dashboards"></nav>
+
   <main>
-    <!-- Contrôles -->
-    <section class="card controls">
-      <div class="ctrl-row">
-        <button id="btn-start" class="btn btn-green">▶ Démarrer</button>
-        <button id="btn-stop" class="btn btn-amber">⏹ Arrêter</button>
-        <label class="select-wrap">
-          Profil
-          <select id="sel-profile"></select>
-        </label>
-        <label class="toggle">
-          <input type="checkbox" id="tg-dry" />
-          <span>DRY&nbsp;RUN</span>
-        </label>
-        <label class="toggle toggle-danger">
-          <input type="checkbox" id="tg-kill" />
-          <span>KILL&nbsp;SWITCH</span>
-        </label>
-        <button id="btn-closeall" class="btn btn-red">✕ Fermer tout</button>
-      </div>
-      <div class="ctrl-row token-row">
-        <input id="inp-token" type="password" placeholder="API token (si configuré)" />
-        <span id="msg" class="msg"></span>
+    <!-- ══ 2 · Today ══ -->
+    <section aria-label="Aujourd'hui">
+      <div class="today">
+        <div class="tile">
+          <span class="lbl">Équité</span>
+          <span class="val num" id="v-equity">—</span>
+          <span class="sub num">départ <span id="v-starteq">—</span> · <span id="s-return">—</span></span>
+        </div>
+        <div class="tile">
+          <span class="lbl">P&L réalisé</span>
+          <span class="val num" id="s-realized">—</span>
+          <span class="sub num" id="s-closed">—</span>
+        </div>
+        <div class="tile">
+          <span class="lbl">P&L flottant</span>
+          <span class="val num" id="s-floating">—</span>
+          <span class="sub num">total <span id="s-total">—</span></span>
+        </div>
+        <div class="tile">
+          <span class="lbl">Winrate</span>
+          <span class="val num" id="s-winrate">—</span>
+          <span class="sub num">solde <span id="v-balance">—</span> · levier <span id="v-leverage">—</span></span>
+        </div>
+        <div class="tile">
+          <span class="lbl">Trades du jour</span>
+          <span class="val num small" id="v-trades">—</span>
+          <span class="sub" id="v-halted">—</span>
+        </div>
+        <div class="tile ddwrap">
+          <span class="lbl">Drawdown du jour</span>
+          <div class="ddbar"><div id="dd-fill" class="ddfill"></div></div>
+          <div class="ddrow"><span class="num" id="v-dd">0 %</span><span class="num">halt à <span id="v-ddmax">—</span></span></div>
+        </div>
       </div>
     </section>
 
-    <div class="grid">
-      <!-- Compte -->
-      <section class="card">
-        <h2>Compte</h2>
-        <div class="kv"><span>Solde</span><b id="v-balance">—</b></div>
-        <div class="kv"><span>Équité</span><b id="v-equity">—</b></div>
-        <div class="kv"><span>Équité départ jour</span><b id="v-starteq">—</b></div>
-        <div class="kv"><span>Levier</span><b id="v-leverage">—</b></div>
-        <div class="dd-block">
-          <div class="dd-label">Drawdown du jour <span id="v-dd">0%</span> / <span id="v-ddmax">—</span></div>
-          <div class="bar"><div id="dd-fill" class="bar-fill"></div></div>
+    <!-- ══ 3 · Équité ══ -->
+    <section class="card" aria-label="Équité du jour">
+      <h2>Équité — session du jour
+        <span class="h2-right num" id="v-profcfg">—</span>
+      </h2>
+      <canvas id="eq-chart" height="104"></canvas>
+    </section>
+
+    <!-- ══ 4 · Scan ══ -->
+    <section aria-label="Scan des setups">
+      <h2>Scan des setups — Wyckoff · FVG · Ichimoku
+        <span class="h2-right">bougie M5 clôturée · <span id="scan-updated" class="num">—</span></span>
+      </h2>
+      <div id="scan" class="scan"><div class="empty-feed">En attente du moteur…</div></div>
+    </section>
+
+    <!-- ══ 5 · Positions + Signaux ══ -->
+    <div class="cols">
+      <section class="card" aria-label="Positions ouvertes">
+        <h2>Positions ouvertes <span id="pos-count" class="count">0</span></h2>
+        <div class="tblwrap">
+          <table>
+            <thead><tr>
+              <th>Ticket</th><th>Symbole</th><th>Sens</th><th>Lots</th>
+              <th>Entrée</th><th>Actuel</th><th>SL</th><th>TP</th><th>R</th><th>PnL</th><th></th>
+            </tr></thead>
+            <tbody id="pos-body"><tr class="empty"><td colspan="11">Aucune position</td></tr></tbody>
+          </table>
         </div>
       </section>
 
-      <!-- Profil / session -->
-      <section class="card">
-        <h2>Profil &amp; session</h2>
-        <div class="kv"><span>Risque / trade</span><b id="v-risk">—</b></div>
-        <div class="kv"><span>Grade min</span><b id="v-grade">—</b></div>
-        <div class="kv"><span>R:R cible</span><b id="v-rr">—</b></div>
-        <div class="kv"><span>Max trades / symbole</span><b id="v-maxtrades">—</b></div>
-        <div class="kv"><span>Trades du jour</span><b id="v-trades">—</b></div>
-        <div class="kv"><span>Statut entrées</span><b id="v-halted">—</b></div>
-      </section>
-    </div>
-
-    <!-- Équité + P&L du jour -->
-    <section class="card">
-      <h2>Équité &amp; P&amp;L du jour</h2>
-      <div class="pnl-tiles">
-        <div class="pnl-tile"><span class="pnl-lbl">Réalisé</span><b id="s-realized">—</b></div>
-        <div class="pnl-tile"><span class="pnl-lbl">Flottant</span><b id="s-floating">—</b></div>
-        <div class="pnl-tile"><span class="pnl-lbl">Total</span><b id="s-total">—</b></div>
-        <div class="pnl-tile"><span class="pnl-lbl">Rendement</span><b id="s-return">—</b></div>
-        <div class="pnl-tile"><span class="pnl-lbl">Trades fermés</span><b id="s-closed">—</b></div>
-        <div class="pnl-tile"><span class="pnl-lbl">Winrate</span><b id="s-winrate">—</b></div>
-      </div>
-      <canvas id="eq-chart" height="170"></canvas>
-    </section>
-
-    <!-- Trades fermés -->
-    <section class="card">
-      <h2>Trades fermés <span id="closed-count" class="count">0</span></h2>
-      <table class="tbl">
-        <thead><tr>
-          <th>Heure</th><th>Symbole</th><th>Sens</th><th>Lots</th>
-          <th>Entrée</th><th>Sortie</th><th>PnL</th><th>Motif</th>
-        </tr></thead>
-        <tbody id="closed-body">
-          <tr class="empty"><td colspan="8">Aucun trade fermé</td></tr>
-        </tbody>
-      </table>
-    </section>
-
-    <!-- Positions -->
-    <section class="card">
-      <h2>Positions ouvertes <span id="pos-count" class="count">0</span></h2>
-      <table class="tbl">
-        <thead><tr>
-          <th>Ticket</th><th>Symbole</th><th>Sens</th><th>Lots</th>
-          <th>Entrée</th><th>Actuel</th><th>SL</th><th>TP</th><th>PnL</th><th></th>
-        </tr></thead>
-        <tbody id="pos-body">
-          <tr class="empty"><td colspan="10">Aucune position</td></tr>
-        </tbody>
-      </table>
-    </section>
-
-    <div class="grid">
-      <!-- Signaux -->
-      <section class="card">
+      <section class="card" aria-label="Signaux récents">
         <h2>Signaux récents</h2>
         <div id="signals" class="feed"><div class="empty-feed">En attente…</div></div>
       </section>
-
-      <!-- Logs -->
-      <section class="card">
-        <h2>Logs <button id="btn-clearlog" class="mini">vider</button></h2>
-        <div id="logs" class="logs"></div>
-      </section>
     </div>
+
+    <!-- ══ 6 · Trades fermés ══ -->
+    <section class="card" aria-label="Trades fermés">
+      <h2>Trades fermés <span id="closed-count" class="count">0</span></h2>
+      <div class="tblwrap">
+        <table>
+          <thead><tr>
+            <th>Heure</th><th>Symbole</th><th>Sens</th><th>Lots</th>
+            <th>Entrée</th><th>Sortie</th><th>PnL</th><th>Motif</th>
+          </tr></thead>
+          <tbody id="closed-body"><tr class="empty"><td colspan="8">Aucun trade fermé</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ══ 7 · Logs (repliés) ══ -->
+    <details class="logbox">
+      <summary>Logs moteur <button id="btn-clearlog" class="mini" type="button">vider</button></summary>
+      <div id="logs" class="logs"></div>
+    </details>
   </main>
 
-  <footer>
-    <span>⚠️ Trading réel = argent réel. Vérifie DRY&nbsp;RUN avant de passer en live.</span>
-  </footer>
+  <footer>⚠️ Trading réel = argent réel — vérifie le bandeau DRY RUN avant tout passage en live.</footer>
 
-  <script src="/static/app.js"></script>
+  <script src="static/app.js"></script>
 </body>
 </html>

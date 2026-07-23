@@ -7,7 +7,8 @@
   let testStatus = '';
   let testing = false;
   
-  const API_URL = 'http://localhost:8000/api';
+  import { API_URL as API_BASE } from '$lib/config.js';
+  const API_URL = `${API_BASE}/api`;
   
   async function testDiscord() {
     if (!settings?.notifications?.discord_enabled) {

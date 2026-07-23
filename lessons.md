@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # lessons.md — mémoire procédurale saasDrevmBot
 
 Leçons apprises sur CE projet : bugs récurrents, pièges connus, causes racines.
@@ -62,3 +63,18 @@ Format : `L## — Titre / Symptôme / Cause racine / Fix / Date`
 - **Piège de séquencement (le plus important)** : un **faux** `X-N8N-Secret` renvoie le même 500 qu'aucun secret — donc `N8N_WEBHOOK_SECRET` n'est pas défini et la vérification est **entièrement contournée** (`if (expected)` est faux → le contrôle est sauté). Or `/notify/telegram` accepte un champ `text` libre envoyé tel quel à Telegram. Le jour où `TELEGRAM_BOT_TOKEN` est renseigné **sans** `N8N_WEBHOOK_SECRET`, l'endpoint devient un relais Telegram public : n'importe qui peut poster ce qu'il veut sur le canal.
 - **Règle à retenir** : **toujours définir `N8N_WEBHOOK_SECRET` en premier**, avant `TELEGRAM_BOT_TOKEN` et `TE_API_KEY`. Le secret désactivé par variable vide est un choix de dev qui devient une faille en prod.
 - **Date** : 2026-07-23
+=======
+# lessons.md — Mémoire procédurale du projet
+
+L01 — Blocs de code orphelins dans trading_bot/
+Symptôme : `import telegram` (ou main.py) plante en SyntaxError/IndentationError.
+Cause racine : plusieurs fichiers de trading_bot/ (telegram.py, main.py) contiennent des snippets collés au niveau module, hors de toute fonction, référençant des variables inexistantes.
+Fix : envelopper les snippets dans des fonctions nommées (cf. telegram.py : notify_divergence, notify_divergences, filter_divergences, notify_smart_money). main.py contient encore un bloc orphelin après la boucle while (bias/wyckoff/execute_trade) — à traiter.
+Date : 2026-07-12
+
+L02 — Secrets en dur dans trading_bot/
+Symptôme : clés API placeholders ("YOUR_TWELVEDATA_KEY", "YOUR_BOT_TOKEN") codées en dur.
+Cause racine : pas de gestion d'environnement dans ce module.
+Fix : os.getenv + python-dotenv (data_engine.py, telegram.py) + env.template. Toujours passer par .env pour tout nouveau secret.
+Date : 2026-07-12
+>>>>>>> 129bf10da6b009fc9faa0ced12ed3cb97bca7a39

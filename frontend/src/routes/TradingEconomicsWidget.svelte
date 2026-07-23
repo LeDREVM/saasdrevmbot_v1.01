@@ -1,6 +1,6 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
-	import { API_ENDPOINTS } from '$lib/config';
+	// Le calendrier public passe par la fonction Netlify (chemin relatif `/api/calendar`).
 
 	/** @type {any[]} */
 	let events = [];
@@ -112,7 +112,7 @@
 	<div class="widget-header">
 		<div class="header-left">
 			<h2>📊 Calendrier Économique</h2>
-			<span class="source">Trading Economics</span>
+			<span class="source">ForexFactory</span>
 		</div>
 		<button class="refresh-btn" on:click={handleRefresh} disabled={loading}>
 			{loading ? '⏳' : '🔄'} Actualiser

@@ -3,8 +3,16 @@
  * Gère les variables d'environnement et les configurations par défaut
  */
 
-// URL de l'API backend
-export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// URL de l'API backend (FastAPI).
+// 3 modes selon VITE_API_URL :
+//   - non défini (dev local)        → 'http://localhost:8000' (appel direct FastAPI)
+//   - '' (chaîne vide, prod Netlify) → chemins RELATIFS '/api/...' captés par le
+//                                       reverse-proxy Netlify (voir netlify.toml)
+//   - 'https://api.domaine.com'      → appel absolu (mode CORS)
+// On teste `=== undefined` (et non `||`) pour que '' reste relatif au lieu de
+// retomber sur localhost.
+const _viteApiUrl = import.meta.env.VITE_API_URL;
+export const API_URL = _viteApiUrl === undefined ? 'http://localhost:8000' : _viteApiUrl;
 
 // Mode de l'application
 export const MODE = import.meta.env.MODE || 'development';
@@ -12,15 +20,20 @@ export const IS_DEV = MODE === 'development';
 export const IS_PROD = MODE === 'production';
 
 // Configuration des endpoints API
+// Source principale : FastAPI (API_URL). Exception : le calendrier public est
+// servi par la fonction Netlify via le chemin relatif `/api/calendar` (redirect
+// netlify.toml → /.netlify/functions/calendar), donc volontairement SANS API_URL.
 export const API_ENDPOINTS = {
-	calendar: `${API_URL}/api/calendar`,
+	calendar: '/api/calendar', // Fonction Netlify (chemin relatif volontaire)
+	calendarToday: `${API_URL}/api/calendar/today`,
 	alerts: `${API_URL}/api/alerts`,
 	alertConfig: `${API_URL}/api/alert-config`,
 	stats: `${API_URL}/api/stats`,
 	nextcloud: `${API_URL}/api/nextcloud`,
-	scoring: `${API_URL}/api/n8n/scoring`,
 	scoringHistory: `${API_URL}/api/scoring/history`,
-	upcoming: `${API_URL}/api/n8n/upcoming`
+	scoringStats: `${API_URL}/api/scoring/stats`,
+	scoringAnalyze: `${API_URL}/api/scoring/analyze`,
+	upcoming: `${API_URL}/api/alerts/upcoming`
 };
 
 // Configuration du cache

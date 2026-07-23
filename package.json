@@ -9,13 +9,15 @@
     "bot-only": "node src/index.js"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.107.0",
+    "@supabase/supabase-js": "^2.110.2",
     "axios": "^1.6.0",
     "cheerio": "^1.0.0",
     "discord.js": "^14.14.0",
     "dotenv": "^16.3.1",
     "express": "^4.22.1",
     "node-cron": "^3.0.3",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "socket.io": "^4.8.3",
     "yahoo-finance2": "^3.13.2"
   },

@@ -28,6 +28,7 @@ class AnalyzeRequest(BaseModel):
     session_active: bool = True
     spread_ok: bool = True
     event_context: Optional[dict] = None
+    confluence: Optional[dict] = None   # détail Wyckoff+FVG+Ichimoku (optionnel)
     notify: bool = False
 
 

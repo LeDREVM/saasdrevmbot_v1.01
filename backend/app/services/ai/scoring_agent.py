@@ -12,9 +12,9 @@ from typing import Any, Dict, List, Optional
 
 import anthropic
 
-logger = logging.getLogger(__name__)
+from app.core.config import settings
 
-MODEL = "claude-sonnet-4-6"
+logger = logging.getLogger(__name__)
 
 # ─── Tool definitions ────────────────────────────────────────────────────────
 
@@ -97,7 +97,10 @@ Tu analyses des setups algorithmiques et tu scores leur qualité de 0 à 100 sel
 - Session active NY/London (+10pts), hors session (-10pts)
 - Probabilité directionnelle historique >65% (+10pts), >55% (+5pts)
 - Spread acceptable (+5pts si dans les limites de l'EA)
-- Bonus liquidité/structure confluente (+10pts)
+- Bonus liquidité/structure confluente (+10pts) — quand un bloc « Confluence technique »
+  est fourni, appuie ce bonus sur les piliers réels : FVG frais en mitigation, Wyckoff
+  (Spring/UTAD), divergence RSI alignée et prix du bon côté de la Kijun. Un score de
+  confluence élevé (≥8/11) renforce la conviction ; un FVG comblé ou non testé l'affaiblit.
 
 **Recommandations :**
 - TRADE : score ≥ 75 et pas d'annonce imminente
@@ -116,16 +119,20 @@ class ScoringAgent:
         calendar_fn=None,
         correlation_fn=None,
         api_key: Optional[str] = None,
+        model: Optional[str] = None,
     ):
         """
         Args:
             calendar_fn : callable(hours_ahead) → List[dict] événements à venir
             correlation_fn : callable(symbol, keyword) → dict stats corrélation
-            api_key : clé Anthropic (sinon ANTHROPIC_API_KEY env)
+            api_key : clé Anthropic (sinon settings.ANTHROPIC_API_KEY / env)
+            model : ID modèle Claude (sinon settings.AI_SCORING_MODEL)
         """
         self._calendar_fn = calendar_fn or _default_calendar
         self._correlation_fn = correlation_fn or _default_correlation
-        self._client = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
+        key = api_key or settings.ANTHROPIC_API_KEY
+        self._client = anthropic.Anthropic(api_key=key) if key else anthropic.Anthropic()
+        self._model = model or settings.AI_SCORING_MODEL
 
     # ─── public ──────────────────────────────────────────────────────────────
 
@@ -155,8 +162,8 @@ class ScoringAgent:
 
         for _ in range(6):  # max 6 tours
             resp = self._client.messages.create(
-                model=MODEL,
-                max_tokens=1024,
+                model=self._model,
+                max_tokens=4096,
                 system=SYSTEM_PROMPT,
                 tools=TOOLS,
                 messages=messages,
@@ -240,6 +247,35 @@ class ScoringAgent:
                 f"- Annonce imminente : {event.get('event','?')} "
                 f"({event.get('currency','?')}) dans {event.get('minutes_until','?')} min\n"
             )
+
+        conf = ctx.get("confluence")
+        if conf:
+            msg += "\nConfluence technique (moteur Wyckoff + FVG + Ichimoku) :\n"
+            pts, mx = conf.get("points"), conf.get("max")
+            if pts is not None:
+                msg += f"- Score confluence : {pts}/{mx}\n"
+            pillars = conf.get("pillars") or {}
+            if pillars:
+                yes = [k for k, v in pillars.items() if v]
+                no = [k for k, v in pillars.items() if not v]
+                msg += f"- Piliers présents : {', '.join(yes) or 'aucun'}\n"
+                msg += f"- Piliers absents : {', '.join(no) or 'aucun'}\n"
+            if conf.get("wyckoff"):
+                msg += f"- Wyckoff : {conf['wyckoff']}\n"
+            fvg = conf.get("fvg") or {}
+            if fvg.get("direction"):
+                mit = "en mitigation (prix dans le gap)" if fvg.get("price_in_gap") else "non testé"
+                fresh = "frais" if fvg.get("fresh") else "comblé"
+                msg += f"- FVG : {fvg['direction']}, {fresh}, {mit}\n"
+            if conf.get("rsi_divergence"):
+                msg += f"- Divergence RSI : {conf['rsi_divergence']}\n"
+            if conf.get("price_above_kijun") is not None:
+                msg += f"- Ichimoku : prix {'au-dessus' if conf['price_above_kijun'] else 'en dessous'} de la Kijun\n"
+            if conf.get("m15_zone_touched") is not None:
+                msg += f"- Zone M15 touchée : {'oui' if conf['m15_zone_touched'] else 'non'}\n"
+            if conf.get("m5_trigger"):
+                msg += f"- Trigger M5 : {conf['m5_trigger']}\n"
+
         msg += "\nUtilise les outils disponibles pour compléter l'analyse puis appelle compute_score."
         return msg
 

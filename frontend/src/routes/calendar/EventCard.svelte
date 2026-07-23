@@ -4,22 +4,29 @@
 
   /** @type {Record<string, string>} */
   const impactColors = {
-    'High': '#ef4444',
-    'Medium': '#f59e0b',
-    'Low': '#10b981'
+    'high': '#ef4444',
+    'medium': '#f59e0b',
+    'low': '#10b981'
   };
 
   /** @type {Record<string, string>} */
   const impactEmojis = {
-    'High': '🔴',
-    'Medium': '🟡',
-    'Low': '🟢'
+    'high': '🔴',
+    'medium': '🟡',
+    'low': '🟢'
+  };
+
+  /** @type {Record<string, string>} */
+  const impactLabels = {
+    'high': 'High',
+    'medium': 'Medium',
+    'low': 'Low'
   };
 </script>
 
 <div
   class="event-card"
-  style="border-left-color: {impactColors[event && (event.impact === 'High' || event.impact === 'Medium' || event.impact === 'Low') ? event.impact : 'Low']}"
+  style="border-left-color: {impactColors[event && impactColors[event.impact] ? event.impact : 'low']}"
 >
   <div class="event-header">
     <div class="time-currency">
@@ -27,7 +34,7 @@
       <span class="currency">{event?.currency}</span>
     </div>
     <span class="impact" style="background: {impactColors[event.impact]}20; color: {impactColors[event.impact]}">
-      {impactEmojis[event.impact]} {event.impact}
+      {impactEmojis[event.impact]} {impactLabels[event.impact] || event.impact}
     </span>
   </div>
   

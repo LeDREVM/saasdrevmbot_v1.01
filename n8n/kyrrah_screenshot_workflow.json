@@ -1,0 +1,116 @@
+{
+  "name": "Kyrrah Assist — Screenshot → AI Score",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "screenshot-score",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "node-webhook",
+      "name": "📥 Screenshot Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "kyrrah-screenshot"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Récupère l'image base64 envoyée par le dashboard Kyrrah Assist\nconst body = $input.first().json.body || $input.first().json;\nreturn [{\n  json: {\n    symbol: body.symbol || 'XAUUSD',\n    timeframe: body.timeframe || 'H1',\n    image_base64: (body.image_base64 || (body.image_data_url||'').split(',')[1] || ''),\n    template: body.template || 'GoldXrodgers'\n  }\n}];"
+      },
+      "id": "node-parse",
+      "name": "🔍 Parse Image",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 1024,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [\n        {\n          \"type\": \"image\",\n          \"source\": {\n            \"type\": \"base64\",\n            \"media_type\": \"image/png\",\n            \"data\": \"{{ $json.image_base64 }}\"\n          }\n        },\n        {\n          \"type\": \"text\",\n          \"text\": \"Tu es l'analyste DREVM (template GoldXrodgers, SMC/ICT/Wyckoff) pour la session New York. Analyse cette capture de chart {{ $json.symbol }} en {{ $json.timeframe }}.\\n\\nNote chaque pilier de 0 à 10 : Wyckoff, ICT/SMC (FVG, OB, BPR, MSS, liquidité), Ichimoku, Fibonacci (sniper 0.618/0.5/0.382), RSI/CCI.\\n\\nRéponds UNIQUEMENT en JSON valide :\\n{\\n  \\\"score\\\": <moyenne 0-10>,\\n  \\\"direction\\\": \\\"BUY\\\"|\\\"SELL\\\"|\\\"NEUTRAL\\\",\\n  \\\"entry_price\\\": <prix lu sur le chart>,\\n  \\\"stop_loss\\\": <prix>,\\n  \\\"take_profit_1\\\": <prix RR ~1.5>,\\n  \\\"take_profit_2\\\": <prix RR ~3>,\\n  \\\"risk_reward\\\": <ratio>,\\n  \\\"rsi\\\": <valeur estimée>,\\n  \\\"pillars\\\": { \\\"wyckoff\\\": <0-10>, \\\"ict\\\": <0-10>, \\\"ichimoku\\\": <0-10>, \\\"fibonacci\\\": <0-10>, \\\"rsi\\\": <0-10> },\\n  \\\"ai_analysis\\\": \\\"<2-3 phrases: structure, confluence, invalidation, grade A+/A/B/C/D>\\\"\\n}\"\n        }\n      ]\n    }\n  ]\n}",
+        "options": { "timeout": 60000 }
+      },
+      "id": "node-ai",
+      "name": "🤖 Claude Vision (GoldXrodgers)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300],
+      "credentials": {
+        "httpHeaderAuth": { "id": "anthropic-api-key", "name": "Anthropic API Key" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extrait le JSON renvoyé par Claude et le normalise pour le dashboard\nconst content = $input.first().json.content?.[0]?.text || '{}';\nlet r;\ntry { const m = content.match(/\\{[\\s\\S]*\\}/); r = JSON.parse(m ? m[0] : content); }\ncatch(e){ r = { score:0, direction:'NEUTRAL', ai_analysis:'parse error: '+content.substring(0,150) }; }\nreturn [{ json: r }];"
+      },
+      "id": "node-parse-ai",
+      "name": "📊 Normalize Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "tableId": "trade_signals",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "symbol",        "fieldValue": "={{$('🔍 Parse Image').item.json.symbol}}" },
+            { "fieldId": "timeframe",     "fieldValue": "={{$('🔍 Parse Image').item.json.timeframe}}" },
+            { "fieldId": "direction",     "fieldValue": "={{$json.direction}}" },
+            { "fieldId": "score",         "fieldValue": "={{$json.score}}" },
+            { "fieldId": "entry_price",   "fieldValue": "={{$json.entry_price}}" },
+            { "fieldId": "stop_loss",     "fieldValue": "={{$json.stop_loss}}" },
+            { "fieldId": "take_profit_1", "fieldValue": "={{$json.take_profit_1}}" },
+            { "fieldId": "take_profit_2", "fieldValue": "={{$json.take_profit_2}}" },
+            { "fieldId": "risk_reward",   "fieldValue": "={{$json.risk_reward}}" },
+            { "fieldId": "ai_analysis",   "fieldValue": "={{$json.ai_analysis}}" },
+            { "fieldId": "ai_model",      "fieldValue": "kyrrah-goldxrodgers-vision" },
+            { "fieldId": "status",        "fieldValue": "PENDING" }
+          ]
+        }
+      },
+      "id": "node-save",
+      "name": "💾 Save Signal",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1120, 300],
+      "credentials": {
+        "supabaseApi": { "id": "supabase-creds", "name": "Supabase" }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('📊 Normalize Score').item.json) }}"
+      },
+      "id": "node-response",
+      "name": "📬 Return Score",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1340, 300]
+    }
+  ],
+  "connections": {
+    "📥 Screenshot Webhook": { "main": [[{ "node": "🔍 Parse Image", "type": "main", "index": 0 }]] },
+    "🔍 Parse Image":        { "main": [[{ "node": "🤖 Claude Vision (GoldXrodgers)", "type": "main", "index": 0 }]] },
+    "🤖 Claude Vision (GoldXrodgers)": { "main": [[{ "node": "📊 Normalize Score", "type": "main", "index": 0 }]] },
+    "📊 Normalize Score":    { "main": [[{ "node": "💾 Save Signal", "type": "main", "index": 0 }]] },
+    "💾 Save Signal":        { "main": [[{ "node": "📬 Return Score", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": ["kyrrah", "screenshot", "ai", "goldxrodgers"],
+  "meta": { "instanceId": "saasdrevmbot-n8n" }
+}

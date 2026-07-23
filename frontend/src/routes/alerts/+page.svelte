@@ -25,10 +25,12 @@
   /** @type {any} */
   let syncStatus = null;
   let loading = true;
+  let backendError = false; // vrai si l'API d'alertes est injoignable (backend non déployé)
   let activeTab = 'overview'; // overview, config, history
 
-  // API Base URL
-  const API_URL = 'http://localhost:8000/api';
+  // API Base URL — source unique : $lib/config.js (VITE_API_URL || localhost:8000, FastAPI)
+  import { API_URL as API_BASE } from '$lib/config.js';
+  const API_URL = `${API_BASE}/api`;
   
   // Fetch functions
   async function fetchSettings() {
@@ -62,8 +64,10 @@
         fetchHistory(),
         fetchStats()
       ]);
+      backendError = false;
     } catch (error) {
       console.error('Erreur chargement:', error);
+      backendError = true; // API d'alertes injoignable → bannière + dégradation propre
     } finally {
       loading = false;
     }
@@ -166,6 +170,15 @@
     </button>
   </nav>
   
+  {#if backendError}
+    <div class="backend-banner">
+      ⚠️ Le service d'alertes (backend FastAPI) est injoignable — les données ci-dessous
+      restent vides et l'enregistrement de la configuration est indisponible. La navigation
+      entre les onglets fonctionne. Démarre le backend (port&nbsp;8000) ou configure son URL
+      pour activer cette page.
+    </div>
+  {/if}
+
   {#if loading}
     <div class="loading-state">
       <div class="spinner"></div>
@@ -306,6 +319,17 @@
 </div>
 
 <style>
+  .backend-banner {
+    background: #4a2c00;
+    color: #ffd591;
+    border: 1px solid #d29922;
+    border-radius: 10px;
+    padding: 0.85rem 1.1rem;
+    margin-bottom: 1.25rem;
+    font-size: 0.92rem;
+    line-height: 1.5;
+  }
+
   .dashboard-container {
     max-width: 1400px;
     margin: 0 auto;

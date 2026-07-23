@@ -44,10 +44,10 @@ class Settings(BaseSettings):
 
     # AI Scoring Agent
     ANTHROPIC_API_KEY: Optional[str] = None
-    AI_SCORING_MODEL: str = "claude-sonnet-4-6"
+    AI_SCORING_MODEL: str = "claude-sonnet-5"
 
     # Watchlist (CSV Investing.com export)
-    WATCHLIST_CSV_PATH: Optional[str] = "Portefeuille_Watchlist_03162026.csv"
+    WATCHLIST_CSV_PATH: Optional[str] = "data/Portefeuille_Watchlist_03162026.csv"
     
     class Config:
         env_file = ".env"

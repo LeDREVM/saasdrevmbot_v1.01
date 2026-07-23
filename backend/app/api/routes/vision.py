@@ -12,10 +12,11 @@ le backend n'a pas besoin de la clé service_role.
 import logging
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, HttpUrl
 
-from app.services.ai.vision_analyst import MAX_IMAGES, analyze_charts
+from app.api.routes.n8n import verify_n8n_secret
+from app.services.ai.vision_analyst import MAX_IMAGES, analyze_charts, format_telegram
 
 logger = logging.getLogger(__name__)
 
@@ -50,4 +51,42 @@ async def analyze(req: VisionAnalyzeRequest):
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:  # httpx / anthropic
         logger.exception("Erreur analyse vision")
+        raise HTTPException(status_code=502, detail=f"Analyse échouée : {e}")
+
+
+# ─── Pipeline n8n (pré-ouverture NY) ─────────────────────────────────────────
+
+class VisionRawImage(BaseModel):
+    data: str = Field(..., description="Image encodée base64 (sans préfixe data:)")
+    media_type: str = Field("image/png")
+    timeframe: Optional[str] = Field(None, examples=["M5", "H4", "D1"])
+
+
+class VisionAnalyzeRawRequest(BaseModel):
+    symbol: str = Field(..., examples=["XAUUSD"])
+    images: List[VisionRawImage] = Field(..., min_length=1, max_length=MAX_IMAGES)
+    context: Optional[str] = None
+
+
+@router.post("/analyze-raw", dependencies=[Depends(verify_n8n_secret)])
+async def analyze_raw(req: VisionAnalyzeRawRequest):
+    """
+    Analyse depuis images base64 (workflow n8n : screenshot_service → ici).
+    Authentifié par le secret partagé `X-N8N-Secret`.
+    Retourne l'analyse complète + `telegram_text` prêt à envoyer.
+    """
+    try:
+        result = await analyze_charts(
+            symbol=req.symbol.upper().strip(),
+            images=[i.model_dump() for i in req.images],
+            context=req.context,
+        )
+        result["telegram_text"] = format_telegram(result)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.exception("Erreur analyse vision (raw)")
         raise HTTPException(status_code=502, detail=f"Analyse échouée : {e}")

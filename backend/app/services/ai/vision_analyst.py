@@ -167,10 +167,30 @@ def _guess_media_type(url: str, content_type: Optional[str]) -> str:
 
 
 async def _download_images(images: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Télécharge les URLs signées → blocs image base64 pour l'API Anthropic."""
+    """
+    Prépare les blocs image pour l'API Anthropic.
+    Chaque item accepte SOIT `url` (URL signée à télécharger),
+    SOIT `data` (base64 déjà prêt, ex: pipeline n8n) + `media_type` optionnel.
+    """
     blocks: List[Dict[str, Any]] = []
     async with httpx.AsyncClient(timeout=30) as client:
         for img in images[:MAX_IMAGES]:
+            if img.get("data"):
+                raw_len = len(img["data"]) * 3 // 4  # taille approx. décodée
+                if raw_len > MAX_IMAGE_BYTES:
+                    raise ValueError(f"Image trop lourde ({img.get('timeframe', '?')})")
+                blocks.append({
+                    "timeframe": img.get("timeframe") or "?",
+                    "block": {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": img.get("media_type") or "image/png",
+                            "data": img["data"],
+                        },
+                    },
+                })
+                continue
             resp = await client.get(img["url"])
             resp.raise_for_status()
             if len(resp.content) > MAX_IMAGE_BYTES:
@@ -187,6 +207,47 @@ async def _download_images(images: List[Dict[str, Any]]) -> List[Dict[str, Any]]
                 },
             })
     return blocks
+
+
+def format_telegram(result: Dict[str, Any]) -> str:
+    """Formate une analyse en message Telegram (HTML) style DREVM, ADHD-friendly."""
+    meta = result.get("_meta") or {}
+    bias = result.get("bias") or {}
+    plan = result.get("trade_plan") or {}
+    grade = result.get("grade", "?")
+    action = result.get("action", "?")
+
+    g_emoji = {"A+": "💎", "A": "🟢", "B": "🟡", "C": "🟠", "D": "🔴"}.get(grade, "⚪")
+    a_emoji = {"LONG": "🟢", "SHORT": "🔴", "WAIT": "⏳", "SKIP": "⛔"}.get(action, "")
+
+    lines = [
+        f"🗽 <b>DREVM Pre-Open NY — {meta.get('symbol', '?')}</b>",
+        f"TF : {' → '.join(meta.get('timeframes', []))}",
+        "",
+        f"{g_emoji} <b>Grade {grade}</b> · {a_emoji} <b>{action}</b> · "
+        f"Biais {bias.get('direction', '?')} {bias.get('score', '?')}/10",
+        f"<i>{bias.get('summary', '')}</i>",
+        "",
+        f"🔵 Wyckoff : {(result.get('wyckoff') or {}).get('phase', '—')}",
+        f"🔴 Structure : {(result.get('structure') or {}).get('trend', '—')} · "
+        f"MSS {'✅' if (result.get('structure') or {}).get('mss_confirmed') else '❌'}",
+        f"🎯 Fibo : {(result.get('fibonacci') or {}).get('sniper_zone', '—')}",
+    ]
+    if plan.get("entry"):
+        lines += [
+            "",
+            f"📋 Entry <b>{plan['entry']}</b> · SL <b>{plan.get('sl', '?')}</b> · "
+            f"TP1 <b>{plan.get('tp1', '?')}</b> ({plan.get('rr1', '?')}R)"
+            + (f" · TP2 <b>{plan['tp2']}</b> ({plan.get('rr2', '?')}R)" if plan.get("tp2") else ""),
+        ]
+        if plan.get("trigger"):
+            lines.append(f"🎬 {plan['trigger']}")
+    lines += ["", f"⚠️ Invalidation : {result.get('invalidation', '—')}"]
+    if result.get("news_risk"):
+        lines.append(f"📅 {result['news_risk']}")
+    for w in (result.get("warnings") or [])[:3]:
+        lines.append(f"🚨 {w}")
+    return "\n".join(lines)
 
 
 def _apply_drevm_vetoes(result: Dict[str, Any]) -> Dict[str, Any]:

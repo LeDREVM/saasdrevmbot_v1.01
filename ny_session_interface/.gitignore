@@ -2,3 +2,11 @@ __pycache__/
 *.pyc
 *.log
 STOP.flag
+node_modules/
+.env
+data/
+*.db
+*.db-shm
+*.db-wal
+*.log
+daily_state.json
