@@ -5,6 +5,7 @@
  *                   → [{timeframe, data(base64)}] prêt pour /api/vision/analyze-raw
  * - SYMBOL_MAP complet (5 instruments DREVM + extras)
  */
+require('dotenv').config(); // charge n8n/screenshot_service/.env en run natif (no-op si absent)
 const express = require('express');
 const puppeteer = require('puppeteer');
 
