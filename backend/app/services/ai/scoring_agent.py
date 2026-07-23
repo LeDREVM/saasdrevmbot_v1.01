@@ -131,7 +131,12 @@ class ScoringAgent:
         self._calendar_fn = calendar_fn or _default_calendar
         self._correlation_fn = correlation_fn or _default_correlation
         key = api_key or settings.ANTHROPIC_API_KEY
-        self._client = anthropic.Anthropic(api_key=key) if key else anthropic.Anthropic()
+        if not key:
+            raise ValueError(
+                "ANTHROPIC_API_KEY manquante — configure ta clé Anthropic dans "
+                "backend/.env (ANTHROPIC_API_KEY=sk-ant-...) pour activer le scoring IA."
+            )
+        self._client = anthropic.Anthropic(api_key=key)
         self._model = model or settings.AI_SCORING_MODEL
 
     # ─── public ──────────────────────────────────────────────────────────────

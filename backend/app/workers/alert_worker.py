@@ -33,8 +33,8 @@ celery_app.conf.update(
 # Instances
 predictor = AlertPredictor()
 notifier = NotificationManager(
-    discord_webhook=settings.DISCORD_WEBHOOK,
-    telegram_token=settings.TELEGRAM_TOKEN,
+    discord_webhook=settings.DISCORD_WEBHOOK_URL,
+    telegram_token=settings.TELEGRAM_BOT_TOKEN,
     telegram_chat_id=settings.TELEGRAM_CHAT_ID
 )
 exporter = MarkdownExporter(output_dir="/mnt/user-data/outputs/reports")
