@@ -330,7 +330,7 @@ async def analyze_charts(
         "text": "Procède à l'analyse top-down complète puis appelle render_drevm_analysis.",
     })
 
-    model = getattr(settings, "AI_VISION_MODEL", None) or "claude-sonnet-4-6"
+    model = getattr(settings, "AI_VISION_MODEL", None) or "claude-sonnet-5"
     client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
     resp = await client.messages.create(

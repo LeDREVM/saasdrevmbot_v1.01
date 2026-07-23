@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # lessons.md — mémoire procédurale saasDrevmBot
 
 Leçons apprises sur CE projet : bugs récurrents, pièges connus, causes racines.
@@ -63,18 +62,34 @@ Format : `L## — Titre / Symptôme / Cause racine / Fix / Date`
 - **Piège de séquencement (le plus important)** : un **faux** `X-N8N-Secret` renvoie le même 500 qu'aucun secret — donc `N8N_WEBHOOK_SECRET` n'est pas défini et la vérification est **entièrement contournée** (`if (expected)` est faux → le contrôle est sauté). Or `/notify/telegram` accepte un champ `text` libre envoyé tel quel à Telegram. Le jour où `TELEGRAM_BOT_TOKEN` est renseigné **sans** `N8N_WEBHOOK_SECRET`, l'endpoint devient un relais Telegram public : n'importe qui peut poster ce qu'il veut sur le canal.
 - **Règle à retenir** : **toujours définir `N8N_WEBHOOK_SECRET` en premier**, avant `TELEGRAM_BOT_TOKEN` et `TE_API_KEY`. Le secret désactivé par variable vide est un choix de dev qui devient une faille en prod.
 - **Date** : 2026-07-23
-=======
-# lessons.md — Mémoire procédurale du projet
 
-L01 — Blocs de code orphelins dans trading_bot/
-Symptôme : `import telegram` (ou main.py) plante en SyntaxError/IndentationError.
-Cause racine : plusieurs fichiers de trading_bot/ (telegram.py, main.py) contiennent des snippets collés au niveau module, hors de toute fonction, référençant des variables inexistantes.
-Fix : envelopper les snippets dans des fonctions nommées (cf. telegram.py : notify_divergence, notify_divergences, filter_divergences, notify_smart_money). main.py contient encore un bloc orphelin après la boucle while (bias/wyckoff/execute_trade) — à traiter.
-Date : 2026-07-12
+## L08 — Câbler le pipeline de capture (vision) : router monté, URLs inter-process, secret des deux côtés
 
-L02 — Secrets en dur dans trading_bot/
-Symptôme : clés API placeholders ("YOUR_TWELVEDATA_KEY", "YOUR_BOT_TOKEN") codées en dur.
-Cause racine : pas de gestion d'environnement dans ce module.
-Fix : os.getenv + python-dotenv (data_engine.py, telegram.py) + env.template. Toujours passer par .env pour tout nouveau secret.
-Date : 2026-07-12
->>>>>>> 129bf10da6b009fc9faa0ced12ed3cb97bca7a39
+- **Symptôme** : `/api/vision/analyze` et `/api/vision/analyze-raw` → 404 ; en Docker, WF5 n'atteint ni le screenshot-service ni le backend ; `analyze-raw` → 401 même avec un secret configuré côté backend.
+- **Causes racines** (même famille que L06/L07, appliquée à la capture) :
+  - `vision.router` défini dans `app/api/routes/vision.py` mais **jamais monté** dans `backend/main.py` (import + `include_router` oubliés — cf. L06) → 404.
+  - URLs `localhost` codées en dur dans les nœuds n8n HTTP : injoignables depuis le conteneur n8n (là `localhost` = le conteneur n8n lui-même).
+  - `N8N_WEBHOOK_SECRET` présent côté backend mais **pas exporté côté service n8n** → en-tête `X-N8N-Secret` vide → 401. Complète L07 : là c'était *fail-open* (secret absent des deux côtés), ici c'est *fail-closed* (présent d'un seul côté).
+  - `backend/env.template` : `N8N_WEBHOOK_SECRET` **en double** avec deux valeurs différentes → dotenv garde la dernière (piège silencieux).
+  - Fallback modèle `claude-sonnet-4-6` **invalide** dans `vision_analyst.py`.
+- **Fix** : monter `vision.router` dans `main.py` ; déclarer `AI_VISION_MODEL` (ID valide `claude-sonnet-5`) dans `Settings` ; URLs n8n via `{{ $env.BACKEND_URL || 'http://localhost:8000' }}` et `{{ $env.SCREENSHOT_URL || 'http://localhost:3001' }}` (marche en natif sans config ET en Docker en exportant les vars) ; exporter `N8N_WEBHOOK_SECRET` **des deux côtés** ; dédupliquer le secret dans `env.template`.
+- **Règle à retenir** : tout nouveau routeur → vérifier `include_router` dans `main.py` (L06) ; toute URL inter-process dans n8n → `$env` avec fallback localhost, jamais un host en dur ; tout secret partagé → présent des deux côtés ET jamais dupliqué dans le `.env`.
+- **Date** : 2026-07-23
+
+---
+
+## Héritées (module `trading_bot/`, format d'origine)
+
+## L09 — Blocs de code orphelins dans `trading_bot/`
+
+- **Symptôme** : `import telegram` (ou `main.py`) plante en SyntaxError/IndentationError.
+- **Cause racine** : plusieurs fichiers de `trading_bot/` (`telegram.py`, `main.py`) contiennent des snippets collés au niveau module, hors de toute fonction, référençant des variables inexistantes.
+- **Fix** : envelopper les snippets dans des fonctions nommées (cf. `telegram.py` : `notify_divergence`, `notify_divergences`, `filter_divergences`, `notify_smart_money`). `main.py` contient encore un bloc orphelin après la boucle while (bias/wyckoff/execute_trade) — à traiter.
+- **Date** : 2026-07-12
+
+## L10 — Secrets en dur dans `trading_bot/`
+
+- **Symptôme** : clés API placeholders (`"YOUR_TWELVEDATA_KEY"`, `"YOUR_BOT_TOKEN"`) codées en dur.
+- **Cause racine** : pas de gestion d'environnement dans ce module.
+- **Fix** : `os.getenv` + `python-dotenv` (`data_engine.py`, `telegram.py`) + `env.template`. Toujours passer par `.env` pour tout nouveau secret.
+- **Date** : 2026-07-12
