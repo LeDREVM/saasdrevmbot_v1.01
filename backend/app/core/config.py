@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = None
     AI_SCORING_MODEL: str = "claude-sonnet-5"
 
+    # AI Vision Analyst (analyse de captures de charts)
+    AI_VISION_MODEL: str = "claude-sonnet-5"
+
     # Watchlist (CSV Investing.com export)
     WATCHLIST_CSV_PATH: Optional[str] = "data/Portefeuille_Watchlist_03162026.csv"
     

@@ -21,11 +21,35 @@ services:
       - GENERIC_TIMEZONE=Europe/Paris
       - MT5_SERVER_HOST=signal-server
       - MT5_SERVER_PORT=5000
+      # Secret partagé n8n ↔ backend (en-tête X-N8N-Secret des workflows WF5, etc.)
+      - N8N_WEBHOOK_SECRET=${N8N_WEBHOOK_SECRET}
     volumes:
       - n8n_data:/home/node/.n8n
     depends_on:
       - screenshot-service
       - signal-server
+      - backend
+    networks:
+      - trading-net
+
+  # ── Backend FastAPI (API vision + n8n) ───────────────────────────
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: drevmbot-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - AI_VISION_MODEL=${AI_VISION_MODEL:-claude-sonnet-5}
+      # DOIT être identique à celui du service n8n (vérif X-N8N-Secret)
+      - N8N_WEBHOOK_SECRET=${N8N_WEBHOOK_SECRET}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - SUPABASE_URL=${SUPABASE_URL:-}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY:-}
     networks:
       - trading-net
 
