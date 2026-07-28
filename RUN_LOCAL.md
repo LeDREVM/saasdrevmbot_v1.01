@@ -143,6 +143,55 @@ En cas d'échec, vérifier dans l'ordre :
 
 ---
 
+## 3 bis. Terminal C (alternative) — Orchestrateur LOCAL sans n8n ⭐
+
+Si tu ne veux **pas** de n8n, remplace le Terminal C par l'orchestrateur Python
+`scripts/ny_morning_prep.py` (stdlib pure, aucune dépendance à installer). Il fait
+exactement le même travail que WF6 mais se planifie lui-même :
+
+- déclenche **tous les jours ouvrés à 3h00 Guadeloupe (= 07:00 UTC**, UTC-4 fixe) ;
+- pour **USDJPY, CADJPY, XAUUSD, XBRUSD, GBPJPY, EURUSD**, capture les TF `D1/H4/M15/M5`
+  via `screenshot-service`, analyse via `/api/vision/analyze-raw` ;
+- **sauvegarde chaque rapport** dans `data/ny_reports/<date>/<symbole>.md` (+ `.json`) ;
+- envoie sur Telegram (best-effort, ignoré si le bot n'est pas configuré).
+
+```powershell
+# le secret est lu automatiquement depuis backend\.env (ou via $env:N8N_WEBHOOK_SECRET)
+python scripts\ny_morning_prep.py --daemon      # tourne en continu, se planifie seul
+#   ou, en un clic Windows :  scripts\start_ny_prep.bat
+```
+
+Tests / usages manuels :
+
+```powershell
+python scripts\ny_morning_prep.py --once                 # une passe immédiate (tous les symboles)
+python scripts\ny_morning_prep.py --symbol XBRUSD        # un seul symbole
+python scripts\ny_morning_prep.py --once --no-telegram   # sans notif Telegram
+```
+
+Réglages par variables d'environnement (optionnel) :
+
+| Var | Défaut | Rôle |
+|---|---|---|
+| `NY_SYMBOLS` | `USDJPY,CADJPY,XAUUSD,XBRUSD,GBPJPY,EURUSD` | Liste des symboles. |
+| `NY_TIMEFRAMES` | `D1,H4,M15,M5` | TF capturés (max 6). |
+| `NY_RUN_HOUR_UTC` | `7` | Heure UTC du déclenchement (7 = 3h Guadeloupe). |
+| `NY_WEEKDAYS_ONLY` | `1` | `0` → passe aussi le week-end (7/7). |
+| `SCREENSHOT_URL` / `BACKEND_URL` | `localhost:3001` / `:8000` | Cibles des services. |
+
+### Planifier via l'OS plutôt qu'en daemon (mode `--once`)
+
+- **Windows — Planificateur de tâches** : action *Démarrer un programme* →
+  `python`, arguments `scripts\ny_morning_prep.py --once`, dossier de départ = racine du repo,
+  déclencheur quotidien **07:00 UTC**.
+- **Linux/macOS — cron** (heure machine en UTC) :
+  ```cron
+  0 7 * * 1-5  cd /chemin/vers/saasdrevmbot_v1.01 && python3 scripts/ny_morning_prep.py --once >> data/ny_reports/cron.log 2>&1
+  ```
+
+> Le backend (Terminal A) et le screenshot-service (Terminal B) doivent tourner
+> quand l'orchestrateur se déclenche.
+
 ## 5. Notes
 
 - **Cron WF5** : `25 13 * * 1-5` = 13:25 UTC (open NY été / EDT). En **hiver (EST)** →

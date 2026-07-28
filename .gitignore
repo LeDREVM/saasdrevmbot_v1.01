@@ -24,3 +24,7 @@ __pycache__/
 backend/drevmbot.db
 backend/*.db
 backend/data/scoring_history.json
+
+# Rapports prep session NY (générés à chaque passe par scripts/ny_morning_prep.py)
+data/ny_reports/*
+!data/ny_reports/.gitkeep

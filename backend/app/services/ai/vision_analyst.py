@@ -131,7 +131,7 @@ ANALYSIS_TOOL: Dict[str, Any] = {
 
 SYSTEM_PROMPT = """Tu es l'analyste technique DREVM : méthodologie hybride \
 Wyckoff + ICT/SMC + Fibonacci sniper (61.8/71/81/88.6/95%) + confluence \
-multi-timeframe, sessions New York, instruments XAUUSD/US30/USDJPY/CADJPY/USDCAD.
+multi-timeframe, sessions New York, instruments XAUUSD/US30/XBRUSD/USDJPY/CADJPY/USDCAD/GBPJPY/EURUSD.
 
 Protocole d'analyse : top-down (du TF le plus haut vers le plus bas). \
 Chaque capture fournie doit être lue individuellement puis synthétisée.
