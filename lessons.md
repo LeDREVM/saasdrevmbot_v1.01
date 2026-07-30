@@ -93,3 +93,10 @@ Format : `L## — Titre / Symptôme / Cause racine / Fix / Date`
 - **Cause racine** : pas de gestion d'environnement dans ce module.
 - **Fix** : `os.getenv` + `python-dotenv` (`data_engine.py`, `telegram.py`) + `env.template`. Toujours passer par `.env` pour tout nouveau secret.
 - **Date** : 2026-07-12
+
+## L11 — `npm install` fait remonter des vulnérabilités transitives préexistantes (hook post-deps-audit)
+
+- **Symptôme** : après un `npm install` (même sans toucher `package.json`), le hook `post-deps-audit` bloque avec des CVE `undici` (high) et `uuid`/`node-cron` (moderate).
+- **Cause racine** : ces failles sont **transitives et déjà présentes dans `package-lock.json` committé** (undici via discord.js/axios/yahoo-finance2 ; uuid via `node-cron@3`). `npm install` ne fait que matérialiser `node_modules` (gitignored) à partir du lock existant — il n'ajoute aucune dépendance. `git status` sur `package.json`/`package-lock.json` = inchangés.
+- **Fix / décision** : ne PAS lancer `npm audit fix --force` à l'occasion d'une tâche sans rapport — il bumpe `node-cron 3→4` (**breaking**). Résolution retenue = **justification documentée** : le correctif dépendances est un chantier de maintenance à part entière (bump `node-cron` + revalidation des crons), à traiter sur sa propre branche/brief, pas embarqué dans une feature UI. `node_modules` n'étant pas versionné, rien de vulnérable n'est committé.
+- **Date** : 2026-07-30

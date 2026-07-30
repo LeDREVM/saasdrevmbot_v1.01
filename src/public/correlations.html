@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DREVM · Corrélations Prix ↔ News</title>
+<style>
+  :root {
+    --bg: #0b0f17; --panel: #131a26; --panel2: #1a2434; --border: #243044;
+    --txt: #e6edf5; --muted: #8698ad; --accent: #4f9cff;
+    --up: #22c55e; --down: #ef4444; --neutral: #94a3b8;
+    --high: #ef4444; --medium: #f59e0b; --low: #64748b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--txt);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    padding: 18px 22px; border-bottom: 1px solid var(--border);
+    display: flex; flex-wrap: wrap; gap: 14px; align-items: center;
+    background: linear-gradient(180deg, #10192a, #0b0f17);
+  }
+  header h1 { font-size: 18px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+  header h1 span { color: var(--accent); }
+  .controls { margin-left: auto; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  select, button {
+    background: var(--panel2); color: var(--txt); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 12px; font-size: 13px; cursor: pointer;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #06111f; font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  main { padding: 22px; max-width: 1200px; margin: 0 auto; }
+  .meta { color: var(--muted); font-size: 12px; margin: 0 0 16px; }
+  .status { padding: 24px; text-align: center; color: var(--muted); }
+  .status.error { color: var(--down); }
+  .section { margin: 0 0 26px; }
+  .section h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 0 0 12px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .card .label { color: var(--muted); font-size: 12px; }
+  .card .value { font-size: 26px; font-weight: 700; margin-top: 4px; }
+  .dirbar { display: flex; height: 26px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+  .dirbar > div { display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #06111f; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13px; }
+  th { color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: .5px; }
+  tr:last-child td { border-bottom: none; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .up { color: var(--up); } .down { color: var(--down); } .neutral { color: var(--neutral); }
+  .bg-high { background: var(--high); color: #fff; } .bg-medium { background: var(--medium); color: #06111f; } .bg-low { background: var(--low); color: #fff; }
+  canvas { width: 100%; max-width: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
+  .heatmap { overflow-x: auto; }
+  .heatmap table { min-width: 640px; }
+  .hcell { text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; border-radius: 4px; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; color: var(--muted); font-size: 12px; margin-top: 8px; }
+  .legend b { color: var(--txt); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 780px) { .two { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>📊 Corrélations <span>Prix ↔ News</span></h1>
+  <div class="controls">
+    <label>Symbole
+      <select id="symbol">
+        <option>US30</option><option>DJI</option><option>SPX</option>
+        <option>EURUSD</option><option>GBPUSD</option><option>USDJPY</option>
+        <option>AUDUSD</option><option>XAUUSD</option>
+      </select>
+    </label>
+    <label>Fenêtre
+      <select id="days">
+        <option value="7">7 j</option><option value="30" selected>30 j</option>
+        <option value="60">60 j</option><option value="90">90 j</option>
+      </select>
+    </label>
+    <button id="refresh" class="primary">↻ Rafraîchir</button>
+  </div>
+</header>
+
+<main>
+  <p class="meta" id="meta"></p>
+  <div class="status" id="status">Chargement…</div>
+  <div id="content" style="display:none">
+
+    <div class="section">
+      <h2>Résumé</h2>
+      <div class="cards" id="summaryCards"></div>
+    </div>
+
+    <div class="section">
+      <h2>Répartition directionnelle</h2>
+      <div class="dirbar" id="dirbar"></div>
+      <div class="legend">
+        <span><b class="up">▲ Hausse</b></span>
+        <span><b class="down">▼ Baisse</b></span>
+        <span><b class="neutral">■ Neutre</b></span>
+      </div>
+    </div>
+
+    <div class="two">
+      <div class="section">
+        <h2>Impact par type d'événement</h2>
+        <table id="byTypeTable"><thead><tr>
+          <th>Événement</th><th class="num">N</th><th class="num">Pips moy.</th><th class="num">Impact moy.</th>
+        </tr></thead><tbody></tbody></table>
+      </div>
+      <div class="section">
+        <h2>Top événements (mouvement)</h2>
+        <canvas id="topCanvas" height="300"></canvas>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Heatmap jour × heure (pips moyens)</h2>
+      <div class="heatmap"><table id="heatmapTable"></table></div>
+      <div class="legend"><span>Tranches de 3h · couleur = amplitude moyenne du mouvement (pips)</span></div>
+    </div>
+
+    <div class="section">
+      <h2>Timeline des événements</h2>
+      <table id="timelineTable"><thead><tr>
+        <th>Date/Heure</th><th>Dev.</th><th>Événement</th><th>Impact</th><th class="num">Pips</th><th>Sens</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = (n, d = 1) => (n === null || n === undefined || isNaN(n)) ? '—' : Number(n).toFixed(d);
+const dirClass = (d) => d === 'up' ? 'up' : d === 'down' ? 'down' : 'neutral';
+const dirArrow = (d) => d === 'up' ? '▲' : d === 'down' ? '▼' : '■';
+
+async function load(force = false) {
+  const symbol = $('symbol').value;
+  const days = $('days').value;
+  $('status').style.display = 'block';
+  $('status').className = 'status';
+  $('status').textContent = 'Chargement…';
+  $('content').style.display = 'none';
+  $('refresh').disabled = true;
+  try {
+    const url = `/api/stats/correlations?symbol=${encodeURIComponent(symbol)}&days=${days}${force ? '&force=true' : ''}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    render(data);
+  } catch (e) {
+    $('status').className = 'status error';
+    $('status').textContent = '❌ ' + e.message;
+  } finally {
+    $('refresh').disabled = false;
+  }
+}
+
+function render(d) {
+  const gen = d.generated_at ? new Date(d.generated_at).toLocaleString('fr-FR') : '';
+  $('meta').textContent = `${d.symbol} · ${d.events_analyzed ?? 0} événement(s) analysé(s)` + (gen ? ` · généré ${gen}` : '');
+
+  // Pas de données / prix indisponibles → message du moteur
+  if (!d.events_analyzed || !d.timeline || d.timeline.length === 0) {
+    $('status').style.display = 'block';
+    $('status').className = 'status';
+    $('status').textContent = d.message || 'Aucune donnée de corrélation disponible pour le moment.';
+    $('content').style.display = 'none';
+    return;
+  }
+  $('status').style.display = 'none';
+  $('content').style.display = 'block';
+
+  const s = d.summary || {};
+  // Cartes résumé
+  $('summaryCards').innerHTML = [
+    card('Événements', s.total_events ?? 0, ''),
+    card("Taux d'impact", (s.impact_rate ?? 0) + '%', 'events ayant bougé le prix'),
+    card('Mouvement moyen', fmt(s.avg_movement_pips) + ' pips', ''),
+    card('Sur-volatilité', (s.volatility_increase >= 0 ? '+' : '') + (s.volatility_increase ?? 0) + '%', 'vs périodes calmes'),
+  ].join('');
+
+  // Barre directionnelle
+  const ds = s.direction_stats || { up: 0, down: 0, neutral: 0 };
+  const tot = (ds.up + ds.down + ds.neutral) || 1;
+  const seg = (n, color, label) => n > 0
+    ? `<div style="width:${(n / tot * 100).toFixed(1)}%;background:${color}">${label} ${n}</div>` : '';
+  $('dirbar').innerHTML =
+    seg(ds.up, 'var(--up)', '▲') + seg(ds.down, 'var(--down)', '▼') + seg(ds.neutral, 'var(--neutral)', '■');
+
+  // Impact par type
+  const rows = Object.entries(s.by_event_type || {}).map(([name, v]) =>
+    `<tr><td>${esc(name)}</td><td class="num">${v.count}</td><td class="num">${fmt(v.avg_pips)}</td><td class="num">${fmt(v.avg_impact, 2)}</td></tr>`
+  ).join('');
+  $('byTypeTable').querySelector('tbody').innerHTML = rows || `<tr><td colspan="4" class="neutral">Aucun</td></tr>`;
+
+  // Top events → canvas
+  drawTopEvents(d.top_impact_events || []);
+
+  // Heatmap
+  drawHeatmap(d.heatmap_data || {});
+
+  // Timeline
+  const tl = [...d.timeline].reverse().map(e => {
+    const dt = new Date(e.timestamp);
+    const imp = (e.impact_level || 'Low');
+    const bg = imp === 'High' ? 'bg-high' : imp === 'Medium' ? 'bg-medium' : 'bg-low';
+    return `<tr>
+      <td>${dt.toLocaleDateString('fr-FR')} ${dt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</td>
+      <td>${esc(e.currency || '—')}</td>
+      <td>${esc(e.event_name || '—')}</td>
+      <td><span class="pill ${bg}">${imp}</span></td>
+      <td class="num">${fmt(e.movement_pips)}</td>
+      <td class="${dirClass(e.direction)}">${dirArrow(e.direction)}</td>
+    </tr>`;
+  }).join('');
+  $('timelineTable').querySelector('tbody').innerHTML = tl;
+}
+
+function card(label, value, sub) {
+  return `<div class="card"><div class="label">${label}</div><div class="value">${value}</div>${sub ? `<div class="label">${sub}</div>` : ''}</div>`;
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+function drawTopEvents(list) {
+  const cv = $('topCanvas');
+  const ctx = cv.getContext('2d');
+  const W = cv.width = cv.clientWidth * (window.devicePixelRatio || 1);
+  const rowH = 26 * (window.devicePixelRatio || 1);
+  const H = cv.height = Math.max(list.length, 1) * rowH + 20;
+  ctx.scale(1, 1);
+  ctx.clearRect(0, 0, W, H);
+  const scale = (window.devicePixelRatio || 1);
+  ctx.font = `${12 * scale}px system-ui`;
+  if (!list.length) { ctx.fillStyle = '#8698ad'; ctx.fillText('Aucun', 10 * scale, 20 * scale); return; }
+  const max = Math.max(...list.map(e => Math.abs(e.impact.movement_pips) || 0), 1);
+  const labelW = 150 * scale;
+  const barMax = W - labelW - 60 * scale;
+  list.forEach((e, i) => {
+    const y = 12 * scale + i * rowH;
+    const val = e.impact.movement_pips || 0;
+    const w = Math.abs(val) / max * barMax;
+    ctx.fillStyle = e.impact.direction === 'up' ? '#22c55e' : e.impact.direction === 'down' ? '#ef4444' : '#94a3b8';
+    ctx.fillRect(labelW, y, w, rowH - 8 * scale);
+    ctx.fillStyle = '#e6edf5';
+    ctx.textAlign = 'left';
+    const name = (e.event.event_name || '').slice(0, 20);
+    ctx.fillText(name, 4 * scale, y + 13 * scale);
+    ctx.fillText(fmt(val) + ' pips', labelW + w + 6 * scale, y + 13 * scale);
+  });
+}
+
+function drawHeatmap(hm) {
+  const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const DAY_FR = { Monday: 'Lun', Tuesday: 'Mar', Wednesday: 'Mer', Thursday: 'Jeu', Friday: 'Ven', Saturday: 'Sam', Sunday: 'Dim' };
+  const HOURS = [0, 3, 6, 9, 12, 15, 18, 21];
+  let max = 0;
+  for (const day of Object.values(hm)) for (const v of Object.values(day)) max = Math.max(max, Math.abs(v));
+  max = max || 1;
+  const present = DAYS.filter(day => hm[day]);
+  let html = '<thead><tr><th></th>' + HOURS.map(h => `<th class="num">${h}h</th>`).join('') + '</tr></thead><tbody>';
+  for (const day of present) {
+    html += `<tr><th>${DAY_FR[day]}</th>`;
+    for (const h of HOURS) {
+      const v = hm[day][h];
+      if (v === undefined) { html += '<td></td>'; continue; }
+      const a = 0.12 + 0.88 * (Math.abs(v) / max);
+      html += `<td class="hcell" style="background:rgba(79,156,255,${a.toFixed(2)})">${fmt(v)}</td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</tbody>';
+  $('heatmapTable').innerHTML = html;
+}
+
+$('symbol').addEventListener('change', () => load());
+$('days').addEventListener('change', () => load());
+$('refresh').addEventListener('click', () => load(true));
+load();
+</script>
+</body>
+</html>
