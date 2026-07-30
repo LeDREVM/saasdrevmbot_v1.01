@@ -56,6 +56,15 @@ RUN_MINUTE_UTC = int(os.environ.get("NY_RUN_MINUTE_UTC", "0"))
 # Jours ouvrés uniquement (marché fermé le week-end). NY_WEEKDAYS_ONLY=0 → 7/7.
 WEEKDAYS_ONLY = os.environ.get("NY_WEEKDAYS_ONLY", "1") != "0"
 
+# Filtrage Telegram : n'alerte que les setups de grade >= NY_MIN_GRADE.
+# Ordre croissant D < C < B < A < A+. "ALL" = tout envoyer.
+# ⚠️ Le filtre ne concerne QUE Telegram : les 6 rapports sont TOUJOURS sauvegardés en local.
+GRADE_ORDER = ["D", "C", "B", "A", "A+"]
+MIN_GRADE = os.environ.get("NY_MIN_GRADE", "A").strip().upper()
+if MIN_GRADE != "ALL" and MIN_GRADE not in GRADE_ORDER:
+    print(f"⚠️  NY_MIN_GRADE='{MIN_GRADE}' invalide → 'A' par défaut (valeurs : A+, A, B, C, D, ALL)")
+    MIN_GRADE = "A"
+
 REPORTS_DIR = REPO_ROOT / "data" / "ny_reports"
 
 CAPTURE_TIMEOUT = 150      # s (Puppeteer, multi-TF)
@@ -158,6 +167,35 @@ def notify_telegram(text: str) -> bool:
         return False
 
 
+def _summary_fields(result: dict) -> tuple[str, str, str]:
+    """Extrait (grade, action, biais lisible) du contrat réel analyze-raw.
+
+    Contrat : grade ∈ {A+,A,B,C,D} (top-level), action ∈ {LONG,SHORT,WAIT,SKIP},
+    bias = objet {direction, score, summary}. Tolère aussi une forme aplatie.
+    """
+    grade = str(result.get("grade") or "?").upper()
+    action = str(result.get("action") or "?").upper()
+    bias = result.get("bias")
+    if isinstance(bias, dict):
+        bias_str = f"{bias.get('direction', '?')} {bias.get('score', '')}".strip()
+    else:
+        bias_str = str(bias or result.get("direction") or "?")
+    return grade, action, bias_str
+
+
+def passes_grade_filter(grade: str) -> bool:
+    """True si le grade atteint le seuil NY_MIN_GRADE (Telegram).
+
+    Fail-open : un grade non reconnu passe le filtre (on préfère notifier à tort
+    plutôt que rater un vrai setup à cause d'un aléa de parsing).
+    """
+    if MIN_GRADE == "ALL":
+        return True
+    if grade not in GRADE_ORDER:
+        return True
+    return GRADE_ORDER.index(grade) >= GRADE_ORDER.index(MIN_GRADE)
+
+
 def save_report(symbol: str, result: dict) -> Path:
     """Sauvegarde le rapport (Markdown + JSON brut) sous data/ny_reports/<date>/."""
     day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -180,7 +218,9 @@ def run_once(symbols: list[str], send_telegram: bool = True) -> int:
     print(f"\n═══ Prep session NY — {stamp} ═══")
     print(f"    Symboles : {', '.join(symbols)}")
     print(f"    TF       : {', '.join(TIMEFRAMES)}")
-    failures = 0
+    tg_mode = "OFF" if not send_telegram else ("ALL" if MIN_GRADE == "ALL" else f"grade ≥ {MIN_GRADE}")
+    print(f"    Telegram : {tg_mode}   (les rapports locaux ne sont jamais filtrés)")
+    failures = sent = filtered = 0
 
     for symbol in symbols:
         print(f"\n▶ {symbol}")
@@ -193,19 +233,27 @@ def run_once(symbols: list[str], send_telegram: bool = True) -> int:
             result = analyze_raw(symbol, images)
 
             path = save_report(symbol, result)
-            grade = result.get("grade") or result.get("action", {}).get("grade") or "?"
-            bias = result.get("bias") or result.get("direction") or "?"
-            print(f"     grade={grade} · biais={bias} · rapport → {path.relative_to(REPO_ROOT)}")
+            grade, action, bias = _summary_fields(result)
+            print(f"     grade={grade} · action={action} · biais={bias} "
+                  f"· rapport → {path.relative_to(REPO_ROOT)}")
 
-            if send_telegram and result.get("telegram_text"):
+            if not (send_telegram and result.get("telegram_text")):
+                pass
+            elif passes_grade_filter(grade):
                 if notify_telegram(result["telegram_text"]):
-                    print("  📣 Telegram envoyé")
+                    print(f"  📣 Telegram envoyé (grade {grade})")
+                    sent += 1
+            else:
+                print(f"  🔕 Telegram ignoré (grade {grade} < seuil {MIN_GRADE})")
+                filtered += 1
         except RuntimeError as e:
             failures += 1
             print(f"  ❌ {symbol} : {e}")
 
     ok = len(symbols) - failures
-    print(f"\n═══ Terminé : {ok}/{len(symbols)} OK, {failures} échec(s) ═══")
+    tg = "OFF" if not send_telegram else f"{sent} envoyé(s), {filtered} filtré(s) (seuil {MIN_GRADE})"
+    print(f"\n═══ Terminé : {ok}/{len(symbols)} analysés, {failures} échec(s) "
+          f"· rapports {ok}/{len(symbols)} · Telegram {tg} ═══")
     return failures
 
 
@@ -225,6 +273,8 @@ def run_daemon() -> None:
     print("🟢 Orchestrateur prep NY (local) démarré.")
     print(f"   Déclenchement : {RUN_HOUR_UTC:02d}:{RUN_MINUTE_UTC:02d} UTC "
           f"= 3h Guadeloupe, {'jours ouvrés' if WEEKDAYS_ONLY else '7/7'}.")
+    print(f"   Filtre Telegram : {'ALL' if MIN_GRADE == 'ALL' else f'grade ≥ {MIN_GRADE}'} "
+          f"(rapports locaux non filtrés).")
     print(f"   Screenshot : {SCREENSHOT_URL}   Backend : {BACKEND_URL}")
     print("   Ctrl+C pour arrêter.\n")
     while True:

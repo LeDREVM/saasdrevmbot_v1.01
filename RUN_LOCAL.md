@@ -177,7 +177,18 @@ Réglages par variables d'environnement (optionnel) :
 | `NY_TIMEFRAMES` | `D1,H4,M15,M5` | TF capturés (max 6). |
 | `NY_RUN_HOUR_UTC` | `7` | Heure UTC du déclenchement (7 = 3h Guadeloupe). |
 | `NY_WEEKDAYS_ONLY` | `1` | `0` → passe aussi le week-end (7/7). |
+| `NY_MIN_GRADE` | `A` | **Filtre Telegram** : n'envoie que les setups de grade ≥ seuil (`A+` > `A` > `B` > `C` > `D`). `ALL` = tout envoyer. |
 | `SCREENSHOT_URL` / `BACKEND_URL` | `localhost:3001` / `:8000` | Cibles des services. |
+
+> **Filtrage** — `NY_MIN_GRADE` ne concerne **que Telegram** : les 6 rapports sont
+> **toujours** sauvegardés dans `data/ny_reports/`. Ainsi tu n'es notifié que pour les
+> setups de qualité (défaut : grade A+/A) tout en gardant la trace complète en local.
+> Un grade non reconnu passe le filtre (fail-open : mieux vaut notifier à tort que rater
+> un vrai setup). Exemple — n'alerter que sur les setups parfaits :
+> ```powershell
+> $env:NY_MIN_GRADE = "A+"
+> python scripts\ny_morning_prep.py --daemon
+> ```
 
 ### Planifier via l'OS plutôt qu'en daemon (mode `--once`)
 
