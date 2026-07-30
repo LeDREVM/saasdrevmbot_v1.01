@@ -224,3 +224,30 @@ Réglages par variables d'environnement (optionnel) :
   il suffit d'y exporter `BACKEND_URL=http://backend:8000` et `SCREENSHOT_URL=http://screenshot-service:3001`.
   Le même WF5 fonctionne dans les deux mondes.
 ```
+
+## 6. Import CSV du calendrier économique (ForexFactory : daily / week / month)
+
+Importer les exports CSV du calendrier ForexFactory (les téléchargements **This Week /
+This Month / Today** ont le même format) dans les deux cibles du projet : la **DB backend**
+(`backend/drevmbot.db` → `/api/calendar/*`, `/api/n8n/calendar`, historique) **et**
+`data/events_log.json` (moteur de corrélation Node → dashboard `/correlations`).
+
+```powershell
+# un ou plusieurs fichiers en une passe
+python scripts\import_calendar_csv.py ff_thisweek.csv
+python scripts\import_calendar_csv.py daily.csv week.csv month.csv --range mix
+
+python scripts\import_calendar_csv.py cal.csv --dry-run     # parse + aperçu, rien écrit
+python scripts\import_calendar_csv.py cal.csv --no-node     # DB backend seulement
+python scripts\import_calendar_csv.py cal.csv --no-db       # events_log.json seulement
+```
+
+- **Format** : parseur tolérant (en-têtes insensibles à la casse — `Title/Event`,
+  `Country/Currency`, `Date`, `Time`, `Impact`, `Forecast`, `Previous` ; ou une colonne
+  `DateTime` ISO). Dates `MM-DD-YYYY`/ISO, heures `8:30am`/`All Day`, impact `High/Medium/Low/Holiday`.
+- **Fuseau** : les heures du CSV sont interprétées en **US/Eastern** par défaut (fuseau
+  ForexFactory) puis converties en UTC pour l'alignement prix. Surcharge : `--tz Europe/Paris`
+  ou, sous Windows sans `tzdata`, `--utc-offset -4`.
+- **Dédup** : DB par `(date, time, currency, event)` ; Node par `id` → ré-import idempotent.
+- ⚠️ **Arrête le serveur Node** (`src/server.js`) avant l'import, ou redémarre-le après :
+  il garde `events_log.json` en mémoire et le réécrirait au prochain flush.

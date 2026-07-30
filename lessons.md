@@ -100,3 +100,10 @@ Format : `L## — Titre / Symptôme / Cause racine / Fix / Date`
 - **Cause racine** : ces failles sont **transitives et déjà présentes dans `package-lock.json` committé** (undici via discord.js/axios/yahoo-finance2 ; uuid via `node-cron@3`). `npm install` ne fait que matérialiser `node_modules` (gitignored) à partir du lock existant — il n'ajoute aucune dépendance. `git status` sur `package.json`/`package-lock.json` = inchangés.
 - **Fix / décision** : ne PAS lancer `npm audit fix --force` à l'occasion d'une tâche sans rapport — il bumpe `node-cron 3→4` (**breaking**). Résolution retenue = **justification documentée** : le correctif dépendances est un chantier de maintenance à part entière (bump `node-cron` + revalidation des crons), à traiter sur sa propre branche/brief, pas embarqué dans une feature UI. `node_modules` n'étant pas versionné, rien de vulnérable n'est committé.
 - **Date** : 2026-07-30
+
+## L12 — Deux `declarative_base()` distincts : `create_all` doit viser la metadata du modèle
+
+- **Symptôme** : script d'import écrivant en DB → `sqlite3.OperationalError: no such table: economic_events`, alors que `Base.metadata.create_all()` a été appelé.
+- **Cause racine** : `backend/app/core/database.py` définit `Base = declarative_base()` MAIS `backend/app/models/database.py` en définit un **second, indépendant** (`EconomicEventDB(Base)` y est enregistré). `create_all` sur le Base de `core` ne connaît donc pas la table du modèle.
+- **Fix** : créer les tables via la metadata **du modèle** : `EconomicEventDB.metadata.create_all(bind=engine)` (et non `core.database.Base.metadata`). En run normal, c'est la migration/bootstrap de l'app qui crée les tables ; tout script autonome touchant la DB doit cibler la bonne metadata.
+- **Date** : 2026-07-30
