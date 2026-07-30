@@ -65,6 +65,20 @@ if MIN_GRADE != "ALL" and MIN_GRADE not in GRADE_ORDER:
     print(f"⚠️  NY_MIN_GRADE='{MIN_GRADE}' invalide → 'A' par défaut (valeurs : A+, A, B, C, D, ALL)")
     MIN_GRADE = "A"
 
+# Blackout news : détecte les news du jour à fort impact sur les devises du symbole
+# (via le calendrier économique du backend). NY_NEWS_BLACKOUT=0 pour désactiver.
+NEWS_BLACKOUT = os.environ.get("NY_NEWS_BLACKOUT", "1") != "0"
+# Niveaux d'impact considérés comme blackout (défaut High ; ex : "High,Medium").
+NEWS_IMPACT = [s.strip().capitalize() for s in os.environ.get("NY_NEWS_IMPACT", "High").split(",") if s.strip()]
+# Mute : ne PAS envoyer sur Telegram un symbole en blackout (défaut 0 = juste annoter).
+BLACKOUT_MUTE = os.environ.get("NY_BLACKOUT_MUTE", "0") != "0"
+
+# Devises concernées par symbole ; métaux/pétrole/indices → USD (pilotés par l'USD).
+SYMBOL_CURRENCIES = {
+    "XAUUSD": ["USD"], "XAGUSD": ["USD"], "XBRUSD": ["USD"],
+    "XTIUSD": ["USD"], "US30": ["USD"], "BTCUSD": ["USD"],
+}
+
 REPORTS_DIR = REPO_ROOT / "data" / "ny_reports"
 
 CAPTURE_TIMEOUT = 150      # s (Puppeteer, multi-TF)
@@ -110,6 +124,20 @@ def _post_json(url: str, payload: dict, headers: dict | None = None, timeout: in
                            f"(le service est-il lancé ?)") from None
 
 
+def _get_json(url: str, headers: dict | None = None, timeout: int = 60) -> dict:
+    req = urllib.request.Request(url, method="GET", headers=headers or {})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+            return json.loads(body) if body else {}
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"HTTP {e.code} sur {url} : {detail[:300]}") from None
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"Connexion échouée sur {url} : {e.reason} "
+                           f"(le service est-il lancé ?)") from None
+
+
 def _secret_header() -> dict:
     if not N8N_SECRET:
         raise RuntimeError(
@@ -137,18 +165,57 @@ def capture_set(symbol: str) -> list[dict]:
     return images
 
 
-def analyze_raw(symbol: str, images: list[dict]) -> dict:
+BASE_CONTEXT = ("Prep automatique session NY 3h Guadeloupe (orchestrateur local). "
+                "Vérifier le blackout news du jour avant toute exécution.")
+
+
+def analyze_raw(symbol: str, images: list[dict], context: str | None = None) -> dict:
     """POST /api/vision/analyze-raw → analyse structurée + telegram_text."""
     return _post_json(
         f"{BACKEND_URL}/api/vision/analyze-raw",
-        {
-            "symbol": symbol,
-            "images": images,
-            "context": ("Prep automatique session NY 3h Guadeloupe (orchestrateur local). "
-                        "Vérifier le blackout news du jour avant toute exécution."),
-        },
+        {"symbol": symbol, "images": images, "context": context or BASE_CONTEXT},
         headers=_secret_header(),
         timeout=ANALYZE_TIMEOUT,
+    )
+
+
+# ── Blackout news (calendrier économique) ────────────────────────────────────
+
+def symbol_currencies(symbol: str) -> list[str]:
+    """Devises dont les news impactent le symbole (FX = 2 devises, sinon override)."""
+    s = symbol.upper()
+    if s in SYMBOL_CURRENCIES:
+        return SYMBOL_CURRENCIES[s]
+    if len(s) == 6 and s.isalpha():
+        return [s[:3], s[3:]]
+    return [s]
+
+
+def fetch_calendar() -> list[dict] | None:
+    """Récupère les news du jour (impact NEWS_IMPACT). None si désactivé/indisponible."""
+    if not NEWS_BLACKOUT:
+        return None
+    url = f"{BACKEND_URL}/api/n8n/calendar/today?impact={','.join(NEWS_IMPACT)}"
+    try:
+        res = _get_json(url, headers=_secret_header(), timeout=30)
+        return res.get("events") or []
+    except RuntimeError as e:
+        print(f"⚠️  Calendrier indisponible ({e}) → blackout ignoré cette passe.")
+        return None
+
+
+def blackout_events_for(symbol: str, events: list[dict] | None) -> list[dict]:
+    """Sous-ensemble des news dont la devise concerne le symbole."""
+    if not events:
+        return []
+    curs = {c.upper() for c in symbol_currencies(symbol)}
+    return [e for e in events if str(e.get("currency", "")).upper() in curs]
+
+
+def _format_news(events: list[dict]) -> str:
+    return "; ".join(
+        f"{e.get('time', '?')} {e.get('currency', '?')} {e.get('event', '?')} [{e.get('impact', '?')}]"
+        for e in events
     )
 
 
@@ -220,7 +287,15 @@ def run_once(symbols: list[str], send_telegram: bool = True) -> int:
     print(f"    TF       : {', '.join(TIMEFRAMES)}")
     tg_mode = "OFF" if not send_telegram else ("ALL" if MIN_GRADE == "ALL" else f"grade ≥ {MIN_GRADE}")
     print(f"    Telegram : {tg_mode}   (les rapports locaux ne sont jamais filtrés)")
-    failures = sent = filtered = 0
+
+    # Calendrier récupéré UNE fois pour toute la passe.
+    events = fetch_calendar()
+    if NEWS_BLACKOUT:
+        n = len(events) if events is not None else 0
+        mode = "mute" if BLACKOUT_MUTE else "annotation"
+        print(f"    Blackout : {', '.join(NEWS_IMPACT)} — {n} news aujourd'hui, mode {mode}")
+
+    failures = sent = filtered = blackout = 0
 
     for symbol in symbols:
         print(f"\n▶ {symbol}")
@@ -229,19 +304,37 @@ def run_once(symbols: list[str], send_telegram: bool = True) -> int:
             images = capture_set(symbol)
             print(f"     {len(images)} capture(s) OK")
 
+            bo = blackout_events_for(symbol, events)
+            context = BASE_CONTEXT
+            if bo:
+                blackout += 1
+                news = _format_news(bo)
+                curs = ", ".join(sorted({e.get("currency", "?") for e in bo}))
+                context = (f"{BASE_CONTEXT}\n⚠️ BLACKOUT NEWS AUJOURD'HUI ({curs}) : {news}. "
+                           "Intègre ce risque : si l'entrée tombe autour de ces horaires, "
+                           "privilégier WAIT et abaisser le grade.")
+
             print("  🤖 analyse vision…")
-            result = analyze_raw(symbol, images)
+            result = analyze_raw(symbol, images, context=context)
+
+            # Bannière blackout en tête du rapport ET du message Telegram.
+            if bo and result.get("telegram_text"):
+                result["telegram_text"] = f"🚫 <b>BLACKOUT NEWS</b> — {_format_news(bo)}\n\n{result['telegram_text']}"
 
             path = save_report(symbol, result)
             grade, action, bias = _summary_fields(result)
+            tag = "  · 🚫 BLACKOUT" if bo else ""
             print(f"     grade={grade} · action={action} · biais={bias} "
-                  f"· rapport → {path.relative_to(REPO_ROOT)}")
+                  f"· rapport → {path.relative_to(REPO_ROOT)}{tag}")
 
             if not (send_telegram and result.get("telegram_text")):
                 pass
+            elif bo and BLACKOUT_MUTE:
+                print(f"  🔕 Telegram ignoré (blackout news, mode mute) — {_format_news(bo)}")
+                filtered += 1
             elif passes_grade_filter(grade):
                 if notify_telegram(result["telegram_text"]):
-                    print(f"  📣 Telegram envoyé (grade {grade})")
+                    print(f"  📣 Telegram envoyé (grade {grade}{', 🚫 blackout' if bo else ''})")
                     sent += 1
             else:
                 print(f"  🔕 Telegram ignoré (grade {grade} < seuil {MIN_GRADE})")
@@ -252,8 +345,9 @@ def run_once(symbols: list[str], send_telegram: bool = True) -> int:
 
     ok = len(symbols) - failures
     tg = "OFF" if not send_telegram else f"{sent} envoyé(s), {filtered} filtré(s) (seuil {MIN_GRADE})"
+    bo_txt = f" · blackout {blackout}" if NEWS_BLACKOUT else ""
     print(f"\n═══ Terminé : {ok}/{len(symbols)} analysés, {failures} échec(s) "
-          f"· rapports {ok}/{len(symbols)} · Telegram {tg} ═══")
+          f"· rapports {ok}/{len(symbols)} · Telegram {tg}{bo_txt} ═══")
     return failures
 
 
@@ -275,6 +369,11 @@ def run_daemon() -> None:
           f"= 3h Guadeloupe, {'jours ouvrés' if WEEKDAYS_ONLY else '7/7'}.")
     print(f"   Filtre Telegram : {'ALL' if MIN_GRADE == 'ALL' else f'grade ≥ {MIN_GRADE}'} "
           f"(rapports locaux non filtrés).")
+    if NEWS_BLACKOUT:
+        print(f"   Blackout news : impact {', '.join(NEWS_IMPACT)}, "
+              f"mode {'mute' if BLACKOUT_MUTE else 'annotation'}.")
+    else:
+        print("   Blackout news : désactivé.")
     print(f"   Screenshot : {SCREENSHOT_URL}   Backend : {BACKEND_URL}")
     print("   Ctrl+C pour arrêter.\n")
     while True:

@@ -178,7 +178,19 @@ Réglages par variables d'environnement (optionnel) :
 | `NY_RUN_HOUR_UTC` | `7` | Heure UTC du déclenchement (7 = 3h Guadeloupe). |
 | `NY_WEEKDAYS_ONLY` | `1` | `0` → passe aussi le week-end (7/7). |
 | `NY_MIN_GRADE` | `A` | **Filtre Telegram** : n'envoie que les setups de grade ≥ seuil (`A+` > `A` > `B` > `C` > `D`). `ALL` = tout envoyer. |
+| `NY_NEWS_BLACKOUT` | `1` | **Blackout news** : détecte les news du jour sur les devises du symbole. `0` désactive. |
+| `NY_NEWS_IMPACT` | `High` | Niveaux d'impact comptés comme blackout (ex : `High,Medium`). |
+| `NY_BLACKOUT_MUTE` | `0` | `1` → ne PAS envoyer sur Telegram un symbole en blackout (au lieu de juste l'annoter). |
 | `SCREENSHOT_URL` / `BACKEND_URL` | `localhost:3001` / `:8000` | Cibles des services. |
+
+> **Blackout news** — avant l'analyse, l'orchestrateur récupère **une fois** le calendrier
+> économique du jour (`GET /api/n8n/calendar/today?impact=High`) et, pour chaque symbole,
+> repère les news sur ses devises (FX = les 2 devises ; or/pétrole/indices → USD). En cas de
+> blackout : (1) les news concrètes sont **injectées dans le contexte** envoyé à Claude
+> (« si l'entrée tombe autour de ces horaires, privilégier WAIT »), et (2) une bannière
+> `🚫 BLACKOUT NEWS` est **préfixée au rapport et au message Telegram**. Avec
+> `NY_BLACKOUT_MUTE=1`, ces symboles ne déclenchent aucune alerte Telegram. Si le calendrier
+> est indisponible, le blackout est simplement ignoré pour la passe (fail-open, la passe continue).
 
 > **Filtrage** — `NY_MIN_GRADE` ne concerne **que Telegram** : les 6 rapports sont
 > **toujours** sauvegardés dans `data/ny_reports/`. Ainsi tu n'es notifié que pour les
@@ -212,3 +224,30 @@ Réglages par variables d'environnement (optionnel) :
   il suffit d'y exporter `BACKEND_URL=http://backend:8000` et `SCREENSHOT_URL=http://screenshot-service:3001`.
   Le même WF5 fonctionne dans les deux mondes.
 ```
+
+## 6. Import CSV du calendrier économique (ForexFactory : daily / week / month)
+
+Importer les exports CSV du calendrier ForexFactory (les téléchargements **This Week /
+This Month / Today** ont le même format) dans les deux cibles du projet : la **DB backend**
+(`backend/drevmbot.db` → `/api/calendar/*`, `/api/n8n/calendar`, historique) **et**
+`data/events_log.json` (moteur de corrélation Node → dashboard `/correlations`).
+
+```powershell
+# un ou plusieurs fichiers en une passe
+python scripts\import_calendar_csv.py ff_thisweek.csv
+python scripts\import_calendar_csv.py daily.csv week.csv month.csv --range mix
+
+python scripts\import_calendar_csv.py cal.csv --dry-run     # parse + aperçu, rien écrit
+python scripts\import_calendar_csv.py cal.csv --no-node     # DB backend seulement
+python scripts\import_calendar_csv.py cal.csv --no-db       # events_log.json seulement
+```
+
+- **Format** : parseur tolérant (en-têtes insensibles à la casse — `Title/Event`,
+  `Country/Currency`, `Date`, `Time`, `Impact`, `Forecast`, `Previous` ; ou une colonne
+  `DateTime` ISO). Dates `MM-DD-YYYY`/ISO, heures `8:30am`/`All Day`, impact `High/Medium/Low/Holiday`.
+- **Fuseau** : les heures du CSV sont interprétées en **US/Eastern** par défaut (fuseau
+  ForexFactory) puis converties en UTC pour l'alignement prix. Surcharge : `--tz Europe/Paris`
+  ou, sous Windows sans `tzdata`, `--utc-offset -4`.
+- **Dédup** : DB par `(date, time, currency, event)` ; Node par `id` → ré-import idempotent.
+- ⚠️ **Arrête le serveur Node** (`src/server.js`) avant l'import, ou redémarre-le après :
+  il garde `events_log.json` en mémoire et le réécrirait au prochain flush.
