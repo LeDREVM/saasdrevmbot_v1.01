@@ -178,7 +178,19 @@ Réglages par variables d'environnement (optionnel) :
 | `NY_RUN_HOUR_UTC` | `7` | Heure UTC du déclenchement (7 = 3h Guadeloupe). |
 | `NY_WEEKDAYS_ONLY` | `1` | `0` → passe aussi le week-end (7/7). |
 | `NY_MIN_GRADE` | `A` | **Filtre Telegram** : n'envoie que les setups de grade ≥ seuil (`A+` > `A` > `B` > `C` > `D`). `ALL` = tout envoyer. |
+| `NY_NEWS_BLACKOUT` | `1` | **Blackout news** : détecte les news du jour sur les devises du symbole. `0` désactive. |
+| `NY_NEWS_IMPACT` | `High` | Niveaux d'impact comptés comme blackout (ex : `High,Medium`). |
+| `NY_BLACKOUT_MUTE` | `0` | `1` → ne PAS envoyer sur Telegram un symbole en blackout (au lieu de juste l'annoter). |
 | `SCREENSHOT_URL` / `BACKEND_URL` | `localhost:3001` / `:8000` | Cibles des services. |
+
+> **Blackout news** — avant l'analyse, l'orchestrateur récupère **une fois** le calendrier
+> économique du jour (`GET /api/n8n/calendar/today?impact=High`) et, pour chaque symbole,
+> repère les news sur ses devises (FX = les 2 devises ; or/pétrole/indices → USD). En cas de
+> blackout : (1) les news concrètes sont **injectées dans le contexte** envoyé à Claude
+> (« si l'entrée tombe autour de ces horaires, privilégier WAIT »), et (2) une bannière
+> `🚫 BLACKOUT NEWS` est **préfixée au rapport et au message Telegram**. Avec
+> `NY_BLACKOUT_MUTE=1`, ces symboles ne déclenchent aucune alerte Telegram. Si le calendrier
+> est indisponible, le blackout est simplement ignoré pour la passe (fail-open, la passe continue).
 
 > **Filtrage** — `NY_MIN_GRADE` ne concerne **que Telegram** : les 6 rapports sont
 > **toujours** sauvegardés dans `data/ny_reports/`. Ainsi tu n'es notifié que pour les
