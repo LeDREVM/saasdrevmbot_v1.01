@@ -20,6 +20,8 @@
 
 from __future__ import annotations
 
+import json
+import math
 import os
 import random
 import threading
@@ -40,7 +42,7 @@ try:
     SIMULATE = False
 except ImportError:
     import sim_mt5 as mt5       # façade compatible mt5
-    SIMULATE = True
+    SIMULATE = False
 
 # --- Trading Bible (source de vérité du scoring) -----------------------------
 try:
@@ -57,11 +59,28 @@ except ImportError:
 # CONFIGURATION
 # ============================================================================
 
-MT5_LOGIN: int | None = None
-MT5_PASSWORD: str | None = None
-MT5_SERVER: str | None = None
+# Identifiants du compte MT5 (production, VPS Windows). Fournis via l'ENVIRONNEMENT
+# (.env non committé, ou secrets NSSM) — JAMAIS en clair dans le code. Laisser vide
+# pour se brancher sur le terminal MT5 déjà ouvert et loggé manuellement
+# (mt5.initialize() sans identifiants).
+def _env_int(name: str) -> int | None:
+    raw = os.environ.get(name, "").strip()
+    return int(raw) if raw.isdigit() else None
 
-KILL_SWITCH_FILE = "STOP.flag"
+
+MT5_LOGIN: int | None = _env_int("MT5_LOGIN")
+MT5_PASSWORD: str | None = os.environ.get("MT5_PASSWORD") or None
+MT5_SERVER: str | None = os.environ.get("MT5_SERVER") or None
+
+# Kill-switch : chemin ABSOLU (ancré sur ce dossier, indépendant du cwd du
+# service NSSM/systemd) — surchargeable via l'env. Créer ce fichier stoppe
+# toute nouvelle entrée, boucle auto ET chemin API.
+KILL_SWITCH_FILE = os.environ.get("KILL_SWITCH_FILE") or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "STOP.flag")
+# Persistance de l'état journalier (baseline drawdown, halt, compteurs) —
+# survit aux restarts pour que le halt DD du jour ne soit pas réinitialisable.
+STATE_FILE = os.environ.get("STATE_FILE") or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "daily_state.json")
 MAGIC = 770077
 
 # Alertes Telegram (section 8) — facultatif : définir les variables d'env
@@ -82,7 +101,9 @@ PROFILES = {
     "AGGRESSIVE": dict(risk_pct=1.5, min_grade="B",  rr_target=2.0,
                        max_trades_per_symbol=4, max_daily_dd_pct=5.0, move_sl_to_be_at_r=1.0),
 }
-DEFAULT_PROFILE = "SCALPING"
+DEFAULT_PROFILE = os.environ.get("BOT_PROFILE", "SCALPING").upper()
+if DEFAULT_PROFILE not in PROFILES:
+    DEFAULT_PROFILE = "SCALPING"
 
 SYMBOLS = {
     "US30":   dict(mt5_symbol="US30",   max_spread_points=50, sl_atr_mult=1.5),
@@ -231,6 +252,33 @@ def detect_m5_sweep_and_bos(df_m5: pd.DataFrame):
     return swept, bos
 
 
+def detect_structure(df_m5: pd.DataFrame, left: int = 2, right: int = 2) -> dict:
+    """Structure de marché : tendance (HH/HL = up · LH/LL = down) et dernier
+    événement de cassure — BOS (Break of Structure, continuation) ou CHoCH
+    (Change of Character, 1er break CONTRE la tendance = signal de retournement).
+
+    Renvoie {trend, event, direction} où event ∈ {"BOS","CHOCH",None}.
+    """
+    highs, lows = swing_levels(df_m5, left, right)
+    if len(highs) < 2 or len(lows) < 2:
+        return {"trend": None, "event": None, "direction": None}
+    last_close = float(df_m5["close"].iloc[-1])
+
+    # Tendance établie par les 2 derniers swings de chaque côté.
+    hh, hl = highs[-1] > highs[-2], lows[-1] > lows[-2]
+    lh, ll = highs[-1] < highs[-2], lows[-1] < lows[-2]
+    trend = "up" if (hh and hl) else "down" if (lh and ll) else None
+
+    event = direction = None
+    if last_close > highs[-1]:               # cassure haussière du dernier swing high
+        direction = "up"
+        event = "BOS" if trend == "up" else "CHOCH"
+    elif last_close < lows[-1]:              # cassure baissière du dernier swing low
+        direction = "down"
+        event = "BOS" if trend == "down" else "CHOCH"
+    return {"trend": trend, "event": event, "direction": direction}
+
+
 # ============================================================================
 # ALERTES TELEGRAM (section 8)
 # ============================================================================
@@ -342,13 +390,115 @@ def price_above_kijun(df: pd.DataFrame, period: int = 26) -> bool:
     return float(df["close"].iloc[-1]) > float(kijun.iloc[-1])
 
 
+def detect_fvg(df: pd.DataFrame, scan: int = 20) -> dict:
+    """
+    Fair Value Gap (imbalance 3 bougies) façon `ICT_RSI_Wyckoff.pine` :
+      • FVG haussier : low[i]  > high[i-2]  (vide au-dessus de la bougie i-2)
+      • FVG baissier : high[i] < low[i-2]   (vide en dessous de la bougie i-2)
+
+    Renvoie le FVG le plus récent encore « frais » (non comblé par une clôture
+    ultérieure). `price_in_gap` = le prix est revenu tester le gap (mitigation).
+    """
+    if df is None or len(df) < 3:
+        return {"direction": None, "top": None, "bottom": None,
+                "bars_ago": None, "price_in_gap": False, "fresh": False}
+    highs = df["high"].to_numpy(dtype=float)
+    lows = df["low"].to_numpy(dtype=float)
+    closes = df["close"].to_numpy(dtype=float)
+    n = len(df)
+    last_close = float(closes[-1])
+    stop = max(2, n - scan)
+    for i in range(n - 1, stop - 1, -1):
+        if lows[i] > highs[i - 2]:                       # haussier
+            top, bottom = float(lows[i]), float(highs[i - 2])
+            fresh = not any(closes[j] < bottom for j in range(i + 1, n))
+            if fresh:
+                return {"direction": "BULLISH", "top": round(top, 5),
+                        "bottom": round(bottom, 5), "bars_ago": (n - 1) - i,
+                        "price_in_gap": bottom <= last_close <= top, "fresh": True}
+        if highs[i] < lows[i - 2]:                        # baissier
+            top, bottom = float(lows[i - 2]), float(highs[i])
+            fresh = not any(closes[j] > top for j in range(i + 1, n))
+            if fresh:
+                return {"direction": "BEARISH", "top": round(top, 5),
+                        "bottom": round(bottom, 5), "bars_ago": (n - 1) - i,
+                        "price_in_gap": bottom <= last_close <= top, "fresh": True}
+    return {"direction": None, "top": None, "bottom": None,
+            "bars_ago": None, "price_in_gap": False, "fresh": False}
+
+
+# Barème de confluence du scan (les 3 piliers Wyckoff/FVG/Ichimoku pèsent le plus).
+CONFLUENCE_WEIGHTS = {
+    "wyckoff": 3, "fvg": 3, "ichimoku": 2,
+    "fvg_mitigation": 1, "divergence": 1, "bias": 1,
+}
+CONFLUENCE_MAX = sum(CONFLUENCE_WEIGHTS.values())   # 11
+
+
+def score_confluence(ctx, fvg: dict, direction: str | None) -> dict:
+    """
+    Note la confluence Wyckoff + FVG + Ichimoku (+ divergence, biais, mitigation)
+    dans le sens `direction` ("up"/"down"). Lecture seule : sert au panneau de
+    scan, sans toucher à la décision de trade (`classify_setup`).
+    """
+    # Direction candidate si le smart signal n'a rien tranché.
+    if direction not in ("up", "down"):
+        if ctx.wyckoff == "SPRING" or fvg.get("direction") == "BULLISH":
+            direction = "up"
+        elif ctx.wyckoff == "UTAD" or fvg.get("direction") == "BEARISH":
+            direction = "down"
+    want_bull = direction == "up"
+
+    items = {
+        "wyckoff": (ctx.wyckoff == "SPRING") if want_bull else (ctx.wyckoff == "UTAD"),
+        "fvg": (fvg.get("direction") == "BULLISH") if want_bull else (fvg.get("direction") == "BEARISH"),
+        "ichimoku": ctx.price_above_kijun if want_bull else (not ctx.price_above_kijun),
+        "fvg_mitigation": bool(fvg.get("price_in_gap")) and (
+            (fvg.get("direction") == "BULLISH") if want_bull else (fvg.get("direction") == "BEARISH")),
+        "divergence": (ctx.rsi_divergence == "BULLISH") if want_bull else (ctx.rsi_divergence == "BEARISH"),
+        "bias": (ctx.h4_bias == "BULLISH") if want_bull else (ctx.h4_bias == "BEARISH"),
+    }
+    points = sum(CONFLUENCE_WEIGHTS[k] for k, ok in items.items() if ok)
+    return {
+        "direction": direction, "points": points, "max": CONFLUENCE_MAX,
+        "items": items, "weights": CONFLUENCE_WEIGHTS,
+        "pillars_aligned": items["wyckoff"] and items["fvg"] and items["ichimoku"],
+    }
+
+
+# Fournisseur de prix optionnel (cascade multi-source, cf. api.py). Signature :
+#   provider(symbol, timeframe, n) -> DataFrame | None
+# S'il renvoie des bougies, elles priment sur MT5 ; sinon on retombe sur MT5/sim.
+last_price_source: dict = {}
+_price_provider = None
+
+
+def set_price_provider(fn):
+    global _price_provider
+    _price_provider = fn
+
+
 def get_rates(symbol: str, timeframe: int, n: int) -> pd.DataFrame | None:
-    rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, n)
-    if rates is None or len(rates) == 0:
+    """Bougies CLÔTURÉES uniquement (invariant no-repaint) : la dernière bougie
+    des deux sources (position 0 MT5 / dernière ligne provider) est celle EN
+    FORMATION — on demande n+1 bougies et on l'exclut systématiquement."""
+    if _price_provider is not None:
+        try:
+            pdf = _price_provider(symbol, timeframe, n + 1)
+        except Exception:  # noqa: BLE001
+            log.exception("price provider error (%s tf=%s)", symbol, timeframe)
+            pdf = None
+        if pdf is not None and len(pdf) > 1:
+            return pdf.iloc[:-1].reset_index(drop=True)
+    rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, n + 1)
+    if rates is None or len(rates) < 2:
         log.warning("Pas de données pour %s tf=%s", symbol, timeframe)
         return None
     df = pd.DataFrame(rates)
     df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
+    df = df.iloc[:-1].reset_index(drop=True)  # exclut la bougie en formation
+    if timeframe == mt5.TIMEFRAME_M5:
+        last_price_source[symbol] = "sim" if SIMULATE else "mt5"
     return df
 
 
@@ -401,12 +551,16 @@ class DailyState:
 class BotEngine:
     def __init__(self):
         self.profile_name = DEFAULT_PROFILE
-        self.dry_run = True
+        # DRY_RUN par défaut = True (aucun ordre réel envoyé). Mettre DRY_RUN=0
+        # dans l'environnement (VPS/NSSM) pour armer l'exécution LIVE full-auto.
+        self.dry_run = os.environ.get("DRY_RUN", "1") != "0"
         self.kill_switch = os.path.exists(KILL_SWITCH_FILE)
         self.simulate = SIMULATE
         self.telegram = bool(TELEGRAM_TOKEN and TELEGRAM_CHAT_ID)
 
         self.state = DailyState()
+        self._last_scan_bar: dict = {}  # gating new-bar : dernière M5 clôturée évaluée
+        self._load_state()              # restaure baseline DD/halt/compteurs du jour
         self.signals: deque = deque(maxlen=100)
         self.closed_trades: deque = deque(maxlen=200)
         self.equity_history: deque = deque(maxlen=720)  # ~ courbe d'équité
@@ -458,6 +612,9 @@ class BotEngine:
     def _calc_lot(self, symbol: str, sl_distance_price: float, risk_pct: float) -> float:
         info = mt5.symbol_info(symbol)
         acc = mt5.account_info()
+        if info is None or acc is None or info.trade_tick_size <= 0:
+            log.warning("[%s] symbol/account_info indisponible — lot=0.", symbol)
+            return 0.0
         risk_money = acc.balance * risk_pct / 100.0
         ticks = sl_distance_price / info.trade_tick_size
         loss_per_lot = ticks * info.trade_tick_value
@@ -469,9 +626,17 @@ class BotEngine:
         return round(lots, 2)
 
     def _open_trade(self, symbol: str, direction: str, atr_val: float, cfg: dict):
+        # Garde ATR : un NaN passe `not atr_val` (not nan == False) et produirait
+        # entry/SL/TP/lots NaN envoyés au broker (audit P1-3).
+        if atr_val is None or not math.isfinite(atr_val) or atr_val <= 0:
+            log.warning("[%s] ATR invalide (%s) — ordre annulé.", symbol, atr_val)
+            return None
         with self._mt5_lock:
             info = mt5.symbol_info(symbol)
             tick = mt5.symbol_info_tick(symbol)
+            if info is None or tick is None:
+                log.warning("[%s] symbol_info/tick indisponible — ordre annulé.", symbol)
+                return None
             profile = self.profile
             sl_dist = atr_val * cfg["sl_atr_mult"]
             if direction == "up":
@@ -506,6 +671,9 @@ class BotEngine:
                 "type_filling": mt5.ORDER_FILLING_IOC,
             }
             result = mt5.order_send(request)
+            if result is None:
+                log.error("[%s] order_send → None (connexion perdue ?)", symbol)
+                return None
             if result.retcode != mt5.TRADE_RETCODE_DONE:
                 log.error("[%s] Ordre REFUSÉ : retcode=%s comment=%s",
                           symbol, result.retcode, result.comment)
@@ -521,6 +689,8 @@ class BotEngine:
         for pos in self._my_positions():
             with self._mt5_lock:
                 tick = mt5.symbol_info_tick(pos.symbol)
+                if tick is None:
+                    continue
                 r_dist = abs(pos.price_open - pos.sl)
                 if r_dist <= 0:
                     continue
@@ -535,6 +705,8 @@ class BotEngine:
 
     def _modify_sl(self, pos, new_sl: float):
         info = mt5.symbol_info(pos.symbol)
+        if info is None:
+            return
         mt5.order_send({"action": mt5.TRADE_ACTION_SLTP, "position": pos.ticket,
                         "sl": round(new_sl, info.digits), "tp": pos.tp})
         log.info("[%s] SL → break-even (ticket %s)", pos.symbol, pos.ticket)
@@ -549,6 +721,9 @@ class BotEngine:
                     log.info("[%s] DRY_RUN → fermeture simulée (%s)", pos.symbol, reason)
                     continue
                 tick = mt5.symbol_info_tick(pos.symbol)
+                if tick is None:
+                    log.warning("[%s] tick indisponible — fermeture reportée.", pos.symbol)
+                    continue
                 otype = mt5.ORDER_TYPE_SELL if pos.type == mt5.POSITION_TYPE_BUY else mt5.ORDER_TYPE_BUY
                 price = tick.bid if pos.type == mt5.POSITION_TYPE_BUY else tick.ask
                 res = mt5.order_send({
@@ -572,6 +747,8 @@ class BotEngine:
                     log.info("[%s] DRY_RUN → fermeture simulée ticket %s", pos.symbol, ticket)
                     return True
                 tick = mt5.symbol_info_tick(pos.symbol)
+                if tick is None:
+                    return False
                 otype = mt5.ORDER_TYPE_SELL if pos.type == mt5.POSITION_TYPE_BUY else mt5.ORDER_TYPE_BUY
                 price = tick.bid if pos.type == mt5.POSITION_TYPE_BUY else tick.ask
                 res = mt5.order_send({
@@ -586,12 +763,81 @@ class BotEngine:
                 return ok
         return False
 
+    def execute_signal(self, name: str, direction: str, source: str = "api") -> dict:
+        """
+        Exécute un signal externe (ex : orchestrateur n8n) sur un symbole.
+        LECTURE DES GARDE-FOUS : kill switch, halt (DD), une position/symbole,
+        max trades/jour, DRY_RUN (respecté par `_open_trade`). Renvoie un dict
+        {ok, reason?, order?}. N'envoie un ordre RÉEL que si DRY_RUN est OFF.
+        """
+        cfg = SYMBOLS.get(name)
+        if cfg is None:
+            return {"ok": False, "reason": f"symbole inconnu : {name}"}
+        if direction not in ("up", "down"):
+            return {"ok": False, "reason": "direction invalide (up/down)"}
+        # Kill-switch : relire le DISQUE à chaque appel — la boucle peut être
+        # arrêtée, l'attribut mémoire seul ne suffit pas (audit P0-2).
+        if self.kill_switch or os.path.exists(KILL_SWITCH_FILE):
+            self.kill_switch = True
+            return {"ok": False, "reason": "kill switch actif (STOP.flag)"}
+        # Halt drawdown : baseline garantie pour aujourd'hui + check réel,
+        # même boucle arrêtée / après restart (audit P0-3).
+        reason = self._ensure_daily_state()
+        if reason:
+            return {"ok": False, "reason": reason}
+        if self.state.halted or self._daily_dd_breached():
+            if not self.state.halted:
+                self.state.halted = True
+                self._save_state()
+            return {"ok": False, "reason": "entrées stoppées (drawdown journalier)"}
+
+        sym = cfg["mt5_symbol"]
+        profile = self.profile
+        with self._mt5_lock:
+            if ONE_POSITION_PER_SYMBOL and self._my_positions(sym):
+                return {"ok": False, "reason": "position déjà ouverte sur ce symbole"}
+            if self.state.trades.get(name, 0) >= profile["max_trades_per_symbol"]:
+                return {"ok": False, "reason": "max trades/jour atteint pour ce symbole"}
+            if not self._spread_ok(sym, cfg["max_spread_points"]):
+                return {"ok": False, "reason": "spread trop large"}
+            ctx, _df, atr_val = build_context(cfg)
+
+        if atr_val is None or not math.isfinite(atr_val) or atr_val <= 0:
+            return {"ok": False, "reason": "pas de données de marché / ATR indisponible"}
+
+        res = self._open_trade(sym, direction, atr_val, cfg)
+        if not res:
+            return {"ok": False, "reason": "ordre refusé (lot=0 ou rejet broker)"}
+
+        self.state.trades[name] = self.state.trades.get(name, 0) + 1
+        self._save_state()
+        signal = {
+            "ts": datetime.now(ZoneInfo("UTC")).isoformat(timespec="seconds"),
+            "symbol": name, "direction": direction, "grade": "—",
+            "setup_type": f"exec:{source}", "dry_run": res.get("dry_run", True),
+            "entry": res.get("entry"), "sl": res.get("sl"), "tp": res.get("tp"),
+            "lots": res.get("lots"), "demo": False, "journal": {"source": source},
+        }
+        self.signals.appendleft(signal)
+        log.info("🎯 EXÉCUTION %s %s (%s) | %s", name, direction.upper(), source,
+                 "DRY RUN" if res.get("dry_run") else "LIVE")
+        notify_telegram(
+            f"🎯 <b>EXÉCUTION {name}</b> ({source})\n"
+            f"{'🟢 BUY' if direction == 'up' else '🔴 SELL'} · "
+            f"{'DRY RUN' if res.get('dry_run') else 'LIVE'}\n"
+            f"entrée {res.get('entry')} | SL {res.get('sl')} | TP {res.get('tp')} | "
+            f"lots {res.get('lots')}"
+        )
+        return {"ok": True, "order": res, "dry_run": res.get("dry_run", True)}
+
     def _record_closed(self, pos, exit_px: float, reason: str):
         """Enregistre un trade fermé avec son PnL réalisé (pour les stats)."""
         try:
             info = mt5.symbol_info(pos.symbol)
+            if info is None:
+                return
             diff = (exit_px - pos.price_open) if pos.type == mt5.POSITION_TYPE_BUY else (pos.price_open - exit_px)
-            pnl = diff / info.trade_tick_size * info.trade_tick_value
+            pnl = diff / info.trade_tick_size * info.trade_tick_value * pos.volume
             self.closed_trades.appendleft({
                 "ts": datetime.now(ZoneInfo("UTC")).isoformat(timespec="seconds"),
                 "symbol": pos.symbol,
@@ -611,9 +857,68 @@ class BotEngine:
         end = now_ny.replace(hour=NY_SESSION_END[0], minute=NY_SESSION_END[1], second=0, microsecond=0)
         return start <= now_ny <= end
 
+    # ── état journalier persistant (baseline DD, halt, compteurs) ─────────
+    def _save_state(self):
+        try:
+            tmp = STATE_FILE + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump({"day": self.state.day, "start_equity": self.state.start_equity,
+                           "start_balance": self.state.start_balance,
+                           "halted": self.state.halted, "trades": self.state.trades}, fh)
+            os.replace(tmp, STATE_FILE)
+        except OSError:
+            log.exception("écriture de %s impossible", STATE_FILE)
+
+    def _load_state(self):
+        """Restaure l'état du jour après un restart — un redémarrage ne doit
+        JAMAIS remettre à zéro la baseline drawdown ni lever un halt."""
+        try:
+            with open(STATE_FILE, encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (OSError, ValueError):
+            return
+        if data.get("day") != datetime.now(TZ_NY).strftime("%Y-%m-%d"):
+            return  # état d'un autre jour : ignoré, la baseline sera recréée
+        self.state.day = data["day"]
+        self.state.start_equity = float(data.get("start_equity") or 0)
+        self.state.start_balance = float(data.get("start_balance") or 0)
+        self.state.halted = bool(data.get("halted"))
+        self.state.trades = {k: int(v) for k, v in (data.get("trades") or {}).items()}
+        log.info("État journalier restauré (%s) : start_equity=%.2f halted=%s trades=%s",
+                 self.state.day, self.state.start_equity, self.state.halted,
+                 self.state.trades)
+
+    def _ensure_daily_state(self) -> str | None:
+        """Garantit une baseline DD valide pour AUJOURD'HUI, même boucle arrêtée
+        (chemin API). Renvoie un motif de refus, ou None si l'état est prêt."""
+        today = datetime.now(TZ_NY).strftime("%Y-%m-%d")
+        if self.state.day == today and self.state.start_equity > 0:
+            return None
+        with self._mt5_lock:
+            acc = mt5.account_info()
+            if acc is None:
+                if not mt5.initialize():
+                    return "état journalier indisponible (MT5 non connecté)"
+                acc = mt5.account_info()
+                if acc is None:
+                    return "état journalier indisponible (MT5 non connecté)"
+        if self.state.day != today:
+            self.state.reset(acc.equity, today, acc.balance)
+            log.info("🌅 Baseline journalière initialisée (hors boucle) : equity=%.2f",
+                     acc.equity)
+        else:  # jour déjà bon mais baseline absente
+            self.state.start_equity = acc.equity
+            self.state.start_balance = acc.balance
+        self._save_state()
+        return None
+
     def _daily_dd_breached(self) -> bool:
         with self._mt5_lock:
-            equity = mt5.account_info().equity
+            acc = mt5.account_info()
+        if acc is None:  # déconnexion : ne pas crasher la boucle (cf. audit P1)
+            log.warning("account_info() indisponible — check DD impossible ce cycle.")
+            return False
+        equity = acc.equity
         max_dd = self.profile["max_daily_dd_pct"]
         dd_pct = ((self.state.start_equity - equity) / self.state.start_equity * 100
                   if self.state.start_equity else 0)
@@ -629,6 +934,23 @@ class BotEngine:
             info = mt5.symbol_info(symbol)
         return info is not None and info.spread <= max_points
 
+    def _reconnect(self) -> bool:
+        """Rétablit la connexion MT5 (terminal redémarré, coupure réseau) —
+        la boucle ne doit plus mourir sur une déconnexion (audit P1-4)."""
+        with self._mt5_lock:
+            try:
+                mt5.shutdown()
+            except Exception:  # noqa: BLE001
+                pass
+            ok = (mt5.initialize(login=MT5_LOGIN, password=MT5_PASSWORD, server=MT5_SERVER)
+                  if MT5_LOGIN else mt5.initialize())
+        self.connected = bool(ok)
+        if ok:
+            log.info("🔌 MT5 reconnecté.")
+        else:
+            log.warning("Reconnexion MT5 échouée : %s", mt5.last_error())
+        return bool(ok)
+
     # ── boucle ────────────────────────────────────────────────────────────
     def _interruptible_sleep(self, seconds: float):
         end = time.time() + seconds
@@ -641,53 +963,85 @@ class BotEngine:
             return
         with self._mt5_lock:
             acc = mt5.account_info()
-        self.state.reset(acc.equity, datetime.now(TZ_NY).strftime("%Y-%m-%d"), acc.balance)
+        today = datetime.now(TZ_NY).strftime("%Y-%m-%d")
+        # Ne PAS écraser un état déjà établi aujourd'hui (restauré du disque) :
+        # un restart ne doit jamais remettre la baseline DD à zéro ni lever
+        # un halt (audit P0-3).
+        if self.state.day != today or self.state.start_equity <= 0:
+            self.state.reset(acc.equity, today, acc.balance)
+            self._save_state()
+        else:
+            log.info("État journalier conservé (restart) : start_equity=%.2f halted=%s",
+                     self.state.start_equity, self.state.halted)
         self.sample_equity(force=True)
-        log.info("🌅 Session prête | equity départ=%.2f | profil=%s", acc.equity, self.profile_name)
+        log.info("🌅 Session prête | equity départ=%.2f | profil=%s",
+                 self.state.start_equity, self.profile_name)
         session_was_open = False
 
         try:
             while not self._stop.is_set():
-                now_ny = datetime.now(TZ_NY)
-                now_utc = datetime.now(ZoneInfo("UTC"))
-                today = now_ny.strftime("%Y-%m-%d")
-                self.last_update = now_utc.isoformat(timespec="seconds")
+                # Résilience (audit P1-4) : une exception dans UNE itération ne
+                # tue plus la boucle — log, tentative de reconnexion, on continue.
+                try:
+                    now_ny = datetime.now(TZ_NY)
+                    now_utc = datetime.now(ZoneInfo("UTC"))
+                    today = now_ny.strftime("%Y-%m-%d")
+                    self.last_update = now_utc.isoformat(timespec="seconds")
 
-                if today != self.state.day:
+                    # Santé connexion : MT5 peut tomber (terminal fermé, réseau).
                     with self._mt5_lock:
-                        acc = mt5.account_info()
-                    self.state.reset(acc.equity, today, acc.balance)
-                    log.info("🌅 Nouveau jour NY %s | equity départ=%.2f", today, acc.equity)
+                        alive = mt5.account_info() is not None
+                    if not alive:
+                        log.warning("MT5 déconnecté — tentative de reconnexion…")
+                        if not self._reconnect():
+                            self._interruptible_sleep(POLL_SECONDS); continue
 
-                self.sample_equity()
+                    if today != self.state.day:
+                        with self._mt5_lock:
+                            acc = mt5.account_info()
+                        if acc is not None:
+                            self.state.reset(acc.equity, today, acc.balance)
+                            self._save_state()
+                            log.info("🌅 Nouveau jour NY %s | equity départ=%.2f", today, acc.equity)
 
-                self.session_open = self._in_ny_session(now_ny)
-                self.kill_switch = self.kill_switch or os.path.exists(KILL_SWITCH_FILE)
+                    self.sample_equity()
 
-                if session_was_open and not self.session_open and CLOSE_AT_SESSION_END:
-                    self.close_all_positions("fin_session_NY")
-                session_was_open = self.session_open
+                    self.session_open = self._in_ny_session(now_ny)
+                    self.kill_switch = self.kill_switch or os.path.exists(KILL_SWITCH_FILE)
 
-                if self.kill_switch:
-                    self._interruptible_sleep(POLL_SECONDS); continue
-                if not self.session_open:
-                    self._interruptible_sleep(POLL_SECONDS); continue
-                if any(a <= now_utc <= b for a, b in NEWS_BLACKOUTS):
-                    log.info("📰 Blackout news — pas d'entrée.")
-                    self._interruptible_sleep(POLL_SECONDS); continue
+                    if session_was_open and not self.session_open and CLOSE_AT_SESSION_END:
+                        self.close_all_positions("fin_session_NY")
+                    session_was_open = self.session_open
 
-                self._manage_open_positions()
+                    if self.kill_switch:
+                        self._interruptible_sleep(POLL_SECONDS); continue
+                    if not self.session_open:
+                        self._interruptible_sleep(POLL_SECONDS); continue
+                    if any(a <= now_utc <= b for a, b in NEWS_BLACKOUTS):
+                        log.info("📰 Blackout news — pas d'entrée.")
+                        self._interruptible_sleep(POLL_SECONDS); continue
 
-                if self._daily_dd_breached():
-                    self.state.halted = True
-                    self._interruptible_sleep(POLL_SECONDS); continue
+                    self._manage_open_positions()
 
-                self._scan_symbols()
-                self._interruptible_sleep(POLL_SECONDS)
+                    if self._daily_dd_breached():
+                        if not self.state.halted:
+                            self.state.halted = True
+                            self._save_state()  # le halt survit à un restart
+                        self._interruptible_sleep(POLL_SECONDS); continue
+                    if self.state.halted:  # halt restauré du disque après restart
+                        self._interruptible_sleep(POLL_SECONDS); continue
 
-        except Exception as e:  # noqa: BLE001
-            self.last_error = str(e)
-            log.exception("Erreur fatale de boucle : %s", e)
+                    self._scan_symbols()
+                    self._interruptible_sleep(POLL_SECONDS)
+
+                except Exception as e:  # noqa: BLE001
+                    self.last_error = str(e)
+                    log.exception("Erreur boucle (itération survolée) : %s", e)
+                    with self._mt5_lock:
+                        dead = mt5.account_info() is None
+                    if dead:
+                        self._reconnect()
+                    self._interruptible_sleep(POLL_SECONDS)
         finally:
             with self._mt5_lock:
                 mt5.shutdown()
@@ -713,6 +1067,14 @@ class BotEngine:
                 if ctx is None:
                     continue
 
+                # Gating new-bar (no-repaint) : n'évaluer qu'UNE fois par
+                # bougie M5 clôturée — la boucle repolle toutes les 15 s.
+                bar_ts = str(_df["time"].iloc[-1]) if _df is not None and len(_df) else None
+                if bar_ts is not None:
+                    if self._last_scan_bar.get(name) == bar_ts:
+                        continue
+                    self._last_scan_bar[name] = bar_ts
+
                 setup = classify_setup(ctx, rr_ratio=profile["rr_target"])
 
                 # Mode démo (SIMULATION seulement) : si aucun signal réel, injecter
@@ -737,6 +1099,7 @@ class BotEngine:
                 res = self._open_trade(sym, direction, atr_val, cfg)
                 if res:
                     self.state.trades[name] = self.state.trades.get(name, 0) + 1
+                    self._save_state()
                     journal = build_journal_entry(
                         symbol=name, context=ctx, setup=setup,
                         risk_r_percent=profile["risk_pct"], result_r=None, discipline_score=None)
@@ -903,9 +1266,11 @@ class BotEngine:
                 with self._mt5_lock:
                     tick = mt5.symbol_info_tick(p.symbol)
                     info = mt5.symbol_info(p.symbol)
+                if tick is None or info is None:
+                    continue
                 px = tick.bid if p.type == mt5.POSITION_TYPE_BUY else tick.ask
                 diff = (px - p.price_open) if p.type == mt5.POSITION_TYPE_BUY else (p.price_open - px)
-                pnl = diff / info.trade_tick_size * info.trade_tick_value
+                pnl = diff / info.trade_tick_size * info.trade_tick_value * p.volume
                 out.append({
                     "ticket": p.ticket, "symbol": p.symbol,
                     "type": "BUY" if p.type == mt5.POSITION_TYPE_BUY else "SELL",
@@ -922,6 +1287,59 @@ class BotEngine:
 
     def recent_signals(self):
         return list(self.signals)
+
+    def scan_setups(self) -> list[dict]:
+        """
+        Photographie LECTURE SEULE de la confluence courante par symbole :
+        Wyckoff + FVG + Ichimoku (+ divergence, biais) et grade `classify_setup`.
+        N'ouvre aucun trade — sert au panneau « Scan des setups » de l'UI.
+        """
+        profile = self.profile
+        min_rank = _GRADE_RANK[profile["min_grade"]]
+        out: list[dict] = []
+        for name, cfg in SYMBOLS.items():
+            try:
+                with self._mt5_lock:
+                    ctx, df_m5, _atr = build_context(cfg)
+                if ctx is None:
+                    out.append({"symbol": name, "available": False})
+                    continue
+                setup = classify_setup(ctx, rr_ratio=profile["rr_target"])
+                fvg = detect_fvg(df_m5)
+                structure = detect_structure(df_m5)
+                conf = score_confluence(ctx, fvg, setup.direction)
+                grade = setup.grade.value
+                out.append({
+                    "symbol": name,
+                    "available": True,
+                    "price_source": last_price_source.get(cfg["mt5_symbol"], "sim" if SIMULATE else "mt5"),
+                    "last_price": round(float(df_m5["close"].iloc[-1]), 5) if df_m5 is not None else None,
+                    "direction": conf["direction"],
+                    "grade": grade,
+                    "is_valid": bool(setup.is_valid),
+                    "passes_profile": bool(setup.is_valid and _GRADE_RANK[grade] >= min_rank),
+                    "setup_type": setup.setup_type.value,
+                    "pillars_aligned": conf["pillars_aligned"],
+                    "confluence_points": conf["points"],
+                    "confluence_max": conf["max"],
+                    "confluence": conf["items"],
+                    "weights": conf["weights"],
+                    "context": {
+                        "wyckoff": ctx.wyckoff,
+                        "rsi_divergence": ctx.rsi_divergence,
+                        "price_above_kijun": bool(ctx.price_above_kijun),
+                        "h4_bias": ctx.h4_bias,
+                        "h4_phase": ctx.h4_phase.value,
+                        "m15_zone_touched": bool(ctx.m15_zone_touched),
+                        "m5_trigger": ctx.m5_trigger,
+                    },
+                    "fvg": fvg,
+                    "structure": structure,   # {trend, event: BOS|CHOCH, direction}
+                })
+            except Exception as e:  # noqa: BLE001
+                log.exception("[%s] Erreur scan_setups : %s", name, e)
+                out.append({"symbol": name, "available": False})
+        return out
 
 
 # Singleton partagé par l'API

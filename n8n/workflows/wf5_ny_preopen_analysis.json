@@ -1,0 +1,121 @@
+{
+  "name": "DREVM · WF5 · Pre-Open NY → capture multi-TF → analyse intégrale → Telegram",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "25 13 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "wf5-cron",
+      "name": "⏰ 13:25 UTC (9:25 Guadeloupe, 5 min avant open NY été)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0],
+      "notes": "EDT (été) : open NY 13:30 UTC → cron 13:25. EST (hiver) : open 14:30 UTC → passer à '25 14 * * 1-5'."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Symboles à analyser au pré-open (1 item = 1 analyse = 1 message Telegram)\nconst SYMBOLS = ['XAUUSD', 'US30'];\nconst TIMEFRAMES = ['D1', 'H4', 'M15', 'M5'];\nreturn SYMBOLS.map(symbol => ({ json: { symbol, timeframes: TIMEFRAMES } }));"
+      },
+      "id": "wf5-config",
+      "name": "🧮 Config symboles + TF",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SCREENSHOT_URL || 'http://localhost:3001' }}/capture-set",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ symbol: $json.symbol, timeframes: $json.timeframes }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "wf5-capture",
+      "name": "📸 POST /capture-set (screenshot_service)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/vision/analyze-raw",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-N8N-Secret",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ symbol: $json.symbol, images: $json.images, context: 'Analyse automatique pré-ouverture NY (WF5). Vérifier le blackout news du jour avant toute exécution.' }) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "wf5-analyze",
+      "name": "🤖 POST /api/vision/analyze-raw",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/n8n/notify/telegram",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-N8N-Secret",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $json.telegram_text }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "wf5-telegram",
+      "name": "📣 Telegram (rapport pré-open)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, 0]
+    }
+  ],
+  "connections": {
+    "⏰ 13:25 UTC (9:25 Guadeloupe, 5 min avant open NY été)": {
+      "main": [[{ "node": "🧮 Config symboles + TF", "type": "main", "index": 0 }]]
+    },
+    "🧮 Config symboles + TF": {
+      "main": [[{ "node": "📸 POST /capture-set (screenshot_service)", "type": "main", "index": 0 }]]
+    },
+    "📸 POST /capture-set (screenshot_service)": {
+      "main": [[{ "node": "🤖 POST /api/vision/analyze-raw", "type": "main", "index": 0 }]]
+    },
+    "🤖 POST /api/vision/analyze-raw": {
+      "main": [[{ "node": "📣 Telegram (rapport pré-open)", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "UTC"
+  },
+  "pinData": {}
+}

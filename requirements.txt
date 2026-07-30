@@ -1,0 +1,45 @@
+# FastAPI Core
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+websockets==12.0
+
+# Database & ORM
+sqlalchemy==2.0.25
+alembic==1.13.1
+psycopg2-binary==2.9.9
+
+# Data Processing
+pandas==2.1.4
+numpy==1.26.3
+beautifulsoup4==4.12.3
+requests==2.31.0
+
+# Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-dotenv==1.0.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Trading & Technical Analysis
+ta-lib==0.4.28
+python-binance==1.0.19
+
+# Async & Tasks
+celery==5.3.6
+redis==5.0.1
+schedule==1.2.1
+
+# Monitoring & Logging
+sentry-sdk==1.40.0
+loguru==0.7.2
+
+# Testing
+pytest==7.4.4
+pytest-asyncio==0.23.3
+httpx==0.26.0
+
+# Utils
+pytz==2023.3
+python-dateutil==2.8.2

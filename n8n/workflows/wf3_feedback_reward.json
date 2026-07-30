@@ -1,0 +1,111 @@
+{
+  "name": "DREVM · WF3 · Feedback & reward",
+  "nodes": [
+    {
+      "id": "wf3-cron",
+      "name": "⏰ Toutes les 5 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "wf3-stats",
+      "name": "📥 GET /api/stats",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.NY_BOT_URL }}/api/stats",
+        "options": {
+          "timeout": 15000
+        }
+      }
+    },
+    {
+      "id": "wf3-reward",
+      "name": "🏅 Reward + experience",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Transforme chaque trade fermé en une 'experience' (reward = PnL) prête pour\n// le dataset RL/ML. Le state (features au moment de l'entrée) est à joindre\n// depuis le store WF1 via trade_id/timestamp.\nconst s = $input.first().json;\nreturn (s.recent_closed || []).map(t => ({ json: {\n  ts: t.ts, symbol: t.symbol, type: t.type, entry: t.entry, exit: t.exit,\n  pnl: t.pnl, reward: t.pnl, win: t.pnl > 0, reason: t.reason,\n}}));"
+      }
+    },
+    {
+      "id": "wf3-store",
+      "name": "🗄️ Store experience (replay buffer)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        900,
+        300
+      ],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "⏰ Toutes les 5 min": {
+      "main": [
+        [
+          {
+            "node": "📥 GET /api/stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📥 GET /api/stats": {
+      "main": [
+        [
+          {
+            "node": "🏅 Reward + experience",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🏅 Reward + experience": {
+      "main": [
+        [
+          {
+            "node": "🗄️ Store experience (replay buffer)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "timezone": "Europe/Paris",
+    "saveManualExecutions": true
+  },
+  "tags": [
+    {
+      "name": "drevm"
+    }
+  ],
+  "meta": {}
+}

@@ -1,0 +1,121 @@
+{
+  "name": "DREVM · WF6 · 3h Guadeloupe → prep session NY multi-symboles → capture multi-TF → analyse → Telegram",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "wf6-cron",
+      "name": "⏰ 07:00 UTC (3h Guadeloupe, UTC-4 sans DST)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0],
+      "notes": "La Guadeloupe (AST) est UTC-4 toute l'année, sans changement d'heure : 3h00 locale = 07:00 UTC en permanence. Aucun ajustement été/hiver nécessaire côté trigger. Jours 1-5 (lun-ven) car marché fermé le week-end."
+    },
+    {
+      "parameters": {
+        "jsCode": "// WF6 — prep session NY : 1 item = 1 symbole = 1 analyse = 1 message Telegram.\n// TF nécessaires pour la session NY (top-down SMC/ICT DREVM) : D1 biais, H4 structure, M15 POI, M5 entrée.\nconst SYMBOLS = ['USDJPY', 'CADJPY', 'XAUUSD', 'XBRUSD', 'GBPJPY', 'EURUSD'];\nconst TIMEFRAMES = ['D1', 'H4', 'M15', 'M5'];\nreturn SYMBOLS.map(symbol => ({ json: { symbol, timeframes: TIMEFRAMES } }));"
+      },
+      "id": "wf6-config",
+      "name": "🧮 Config symboles + TF",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SCREENSHOT_URL || 'http://localhost:3001' }}/capture-set",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ symbol: $json.symbol, timeframes: $json.timeframes }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "wf6-capture",
+      "name": "📸 POST /capture-set (screenshot_service)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/vision/analyze-raw",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-N8N-Secret",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ symbol: $json.symbol, images: $json.images, context: 'Prep automatique session NY 3h Guadeloupe (WF6). Vérifier le blackout news du jour avant toute exécution.' }) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "wf6-analyze",
+      "name": "🤖 POST /api/vision/analyze-raw",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL || 'http://localhost:8000' }}/api/n8n/notify/telegram",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-N8N-Secret",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $json.telegram_text }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "wf6-telegram",
+      "name": "📣 Telegram (rapport prep NY)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, 0]
+    }
+  ],
+  "connections": {
+    "⏰ 07:00 UTC (3h Guadeloupe, UTC-4 sans DST)": {
+      "main": [[{ "node": "🧮 Config symboles + TF", "type": "main", "index": 0 }]]
+    },
+    "🧮 Config symboles + TF": {
+      "main": [[{ "node": "📸 POST /capture-set (screenshot_service)", "type": "main", "index": 0 }]]
+    },
+    "📸 POST /capture-set (screenshot_service)": {
+      "main": [[{ "node": "🤖 POST /api/vision/analyze-raw", "type": "main", "index": 0 }]]
+    },
+    "🤖 POST /api/vision/analyze-raw": {
+      "main": [[{ "node": "📣 Telegram (rapport prep NY)", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "UTC"
+  },
+  "pinData": {}
+}

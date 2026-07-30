@@ -73,6 +73,11 @@ app.get('/dashboard', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Dashboard interne — corrélations Prix ↔ News (moteur local /api/stats/correlations)
+app.get('/correlations', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'correlations.html'));
+});
+
 // Fichiers statiques (css, js, fonts, images…)
 app.use(express.static(path.join(__dirname, 'public')));
 

@@ -1,0 +1,187 @@
+{
+  "name": "saasDrevmBot — Calendrier Quotidien",
+  "nodes": [
+    {
+      "id": "schedule-06h",
+      "name": "⏰ Cron 06h00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [240, 300],
+      "typeVersion": 1.3,
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 6 * * 1-5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "fetch-calendar",
+      "name": "📥 Fetch calendrier",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [480, 300],
+      "typeVersion": 4.4,
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SAAS_API_URL }}/api/n8n/calendar/today",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-N8N-Secret", "value": "={{ $env.N8N_WEBHOOK_SECRET }}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "currencies", "value": "USD,EUR,GBP,JPY,CAD,AUD" },
+            { "name": "impact", "value": "High,Medium" }
+          ]
+        },
+        "options": { "timeout": 30000 }
+      }
+    },
+    {
+      "id": "check-events",
+      "name": "🔍 A des événements ?",
+      "type": "n8n-nodes-base.if",
+      "position": [720, 300],
+      "typeVersion": 2.2,
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "count-greater-than-zero",
+              "leftValue": "={{ $json.count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "format-discord",
+      "name": "🎨 Formater Discord",
+      "type": "n8n-nodes-base.code",
+      "position": [960, 200],
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst today = new Date().toLocaleDateString('fr-FR');\nconst events = data.events || [];\n\nconst high = events.filter(e => e.impact === 'High');\nconst medium = events.filter(e => e.impact === 'Medium');\n\nconst fields = [];\n\n// Résumé\nfields.push({\n  name: '📈 Résumé du jour',\n  value: `🔴 **${high.length}** Fort | 🟡 **${medium.length}** Moyen | Total: **${events.length}**`,\n  inline: false\n});\n\n// Annonces fort impact\nif (high.length > 0) {\n  const lines = high.slice(0, 8).map(e => {\n    const forecast = e.forecast || '—';\n    const previous = e.previous || '—';\n    return `**${e.time}** | ${e.currency} | ${e.event}\\n↳ Prév: \\`${forecast}\\` | Préc: \\`${previous}\\``;\n  });\n  if (high.length > 8) lines.push(`_…et ${high.length - 8} autres_`);\n  fields.push({\n    name: '🔴 Fort Impact',\n    value: lines.join('\\n\\n').slice(0, 1024),\n    inline: false\n  });\n}\n\n// Annonces impact moyen\nif (medium.length > 0) {\n  const lines = medium.slice(0, 5).map(e =>\n    `**${e.time}** | ${e.currency} | ${e.event}`\n  );\n  if (medium.length > 5) lines.push(`_…et ${medium.length - 5} autres_`);\n  fields.push({\n    name: '🟡 Impact Moyen',\n    value: lines.join('\\n').slice(0, 1024),\n    inline: false\n  });\n}\n\nreturn [{\n  json: {\n    embeds: [{\n      title: `📊 Calendrier Économique — ${today}`,\n      description: `**${data.count} événements** prévus aujourd'hui · Semaine de trading`,\n      color: 5793266,\n      fields,\n      footer: { text: 'saasDrevmBot • Calendrier automatique' },\n      timestamp: new Date().toISOString()\n    }]\n  }\n}];"
+      }
+    },
+    {
+      "id": "send-discord",
+      "name": "💬 Envoyer Discord",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1200, 200],
+      "typeVersion": 4.4,
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": { "timeout": 10000 }
+      }
+    },
+    {
+      "id": "notify-api-telegram",
+      "name": "📱 Notifier Telegram",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1200, 340],
+      "typeVersion": 4.4,
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SAAS_API_URL }}/api/n8n/notify/telegram",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-N8N-Secret", "value": "={{ $env.N8N_WEBHOOK_SECRET }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ message_type: 'daily_calendar', events: $('📥 Fetch calendrier').first().json.events }) }}",
+        "options": { "timeout": 10000 }
+      }
+    },
+    {
+      "id": "upload-nextcloud",
+      "name": "☁️ Upload Nextcloud",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1200, 480],
+      "typeVersion": 4.4,
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $env.NEXTCLOUD_URL }}/remote.php/dav/files/{{ $env.NEXTCLOUD_USER }}/saasDrevmBot/calendriers/{{ new Date().toISOString().slice(0,10) }}.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($('📥 Fetch calendrier').first().json, null, 2) }}",
+        "options": { "timeout": 15000 }
+      },
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "REPLACE_NEXTCLOUD_BASIC_AUTH_CREDENTIAL_ID",
+          "name": "Nextcloud DrevmBot"
+        }
+      }
+    },
+    {
+      "id": "no-events",
+      "name": "📭 Pas d'événements",
+      "type": "n8n-nodes-base.noOp",
+      "position": [960, 440],
+      "typeVersion": 1,
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "⏰ Cron 06h00": {
+      "main": [[{ "node": "📥 Fetch calendrier", "type": "main", "index": 0 }]]
+    },
+    "📥 Fetch calendrier": {
+      "main": [[{ "node": "🔍 A des événements ?", "type": "main", "index": 0 }]]
+    },
+    "🔍 A des événements ?": {
+      "main": [
+        [
+          { "node": "🎨 Formater Discord", "type": "main", "index": 0 },
+          { "node": "📱 Notifier Telegram", "type": "main", "index": 0 },
+          { "node": "☁️ Upload Nextcloud", "type": "main", "index": 0 }
+        ],
+        [{ "node": "📭 Pas d'événements", "type": "main", "index": 0 }]
+      ]
+    },
+    "🎨 Formater Discord": {
+      "main": [[{ "node": "💬 Envoyer Discord", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Paris",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "tags": ["trading", "saasdrevmbot", "calendar"],
+  "meta": {
+    "description": "Récupère le calendrier économique chaque matin à 06h00 (Paris, lun-ven) et diffuse sur Discord, Telegram et Nextcloud."
+  }
+}

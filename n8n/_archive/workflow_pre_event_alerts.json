@@ -1,0 +1,205 @@
+{
+  "name": "saasDrevmBot — Alertes Pré-Événement",
+  "nodes": [
+    {
+      "id": "schedule-15min",
+      "name": "⏰ Toutes les 15 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [240, 300],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "check-session",
+      "name": "🕐 Session active ?",
+      "type": "n8n-nodes-base.code",
+      "position": [460, 300],
+      "parameters": {
+        "jsCode": "// Filtrer les exécutions hors heures de marché (07h-22h Paris)\nconst now = new Date();\nconst hour = parseInt(now.toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit' }));\nconst day = now.getDay(); // 0=dim, 6=sam\nconst isWeekend = day === 0 || day === 6;\nconst inSession = hour >= 7 && hour <= 22;\n\nif (isWeekend || !inSession) {\n  return [{ json: { skip: true, reason: isWeekend ? 'weekend' : 'hors session', hour } }];\n}\nreturn [{ json: { skip: false, hour } }];"
+      }
+    },
+    {
+      "id": "skip-check",
+      "name": "🔍 Skip ?",
+      "type": "n8n-nodes-base.if",
+      "position": [680, 300],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.skip }}",
+              "operation": "equal",
+              "value2": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "fetch-upcoming-30",
+      "name": "📥 Annonces dans 30 min",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [900, 200],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SAAS_API_URL }}/api/n8n/upcoming",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-N8N-Secret", "value": "={{ $env.N8N_WEBHOOK_SECRET }}" }
+          ]
+        },
+        "queryParameters": {
+          "parameters": [
+            { "name": "minutes", "value": "30" },
+            { "name": "impact", "value": "High" }
+          ]
+        },
+        "options": { "timeout": 15000 }
+      }
+    },
+    {
+      "id": "has-upcoming",
+      "name": "🔍 Annonces imminentes ?",
+      "type": "n8n-nodes-base.if",
+      "position": [1120, 200],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.has_events }}",
+              "operation": "equal",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "format-alert-discord",
+      "name": "🎨 Formater alerte Discord",
+      "type": "n8n-nodes-base.code",
+      "position": [1340, 140],
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst events = data.events || [];\n\nconst fields = events.slice(0, 5).map(e => {\n  const forecast = e.forecast || '—';\n  const previous = e.previous || '—';\n  const actual = e.actual || '—';\n  return {\n    name: `⏰ ${e.time} — ${e.currency} (dans ${e.minutes_until} min)`,\n    value: `**${e.event}**\\nPrévision: \\`${forecast}\\` | Précédent: \\`${previous}\\``,\n    inline: false\n  };\n});\n\nreturn [{\n  json: {\n    content: '🚨 **ANNONCE ÉCONOMIQUE IMMINENTE** 🚨',\n    embeds: [{\n      title: `⏰ ${events.length} annonce${events.length > 1 ? 's' : ''} dans ~30 minutes`,\n      color: 15548997,\n      fields,\n      footer: { text: 'saasDrevmBot • Alerte automatique' },\n      timestamp: new Date().toISOString()\n    }]\n  }\n}];"
+      }
+    },
+    {
+      "id": "send-alert-discord",
+      "name": "💬 Alerte Discord",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1560, 140],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK_ALERTS_URL || $env.DISCORD_WEBHOOK_URL }}",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ JSON.stringify($json) }}",
+        "options": { "timeout": 10000 }
+      }
+    },
+    {
+      "id": "send-alert-telegram",
+      "name": "📱 Alerte Telegram",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1560, 280],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SAAS_API_URL }}/api/n8n/notify/telegram",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-N8N-Secret", "value": "={{ $env.N8N_WEBHOOK_SECRET }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ JSON.stringify({ message_type: 'pre_event', events: $('📥 Annonces dans 30 min').first().json.events, minutes_until: 30 }) }}",
+        "options": { "timeout": 10000 }
+      }
+    },
+    {
+      "id": "trigger-scoring",
+      "name": "🤖 Déclencher scoring IA",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1560, 420],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SAAS_API_URL }}/api/n8n/scoring",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-N8N-Secret", "value": "={{ $env.N8N_WEBHOOK_SECRET }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ JSON.stringify({\n  symbol: 'US30',\n  setup_grade: 'A',\n  htf_phase: 'markup',\n  direction: 'BUY',\n  session_active: true,\n  spread_ok: true,\n  event_context: $('📥 Annonces dans 30 min').first().json.events[0]\n}) }}",
+        "options": { "timeout": 60000 },
+        "continueOnFail": true
+      }
+    },
+    {
+      "id": "no-upcoming",
+      "name": "✅ Aucune annonce",
+      "type": "n8n-nodes-base.noOp",
+      "position": [1340, 320],
+      "parameters": {}
+    },
+    {
+      "id": "skip-noop",
+      "name": "⏭ Ignorer (hors session)",
+      "type": "n8n-nodes-base.noOp",
+      "position": [900, 400],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "⏰ Toutes les 15 min": {
+      "main": [[{ "node": "🕐 Session active ?", "type": "main", "index": 0 }]]
+    },
+    "🕐 Session active ?": {
+      "main": [[{ "node": "🔍 Skip ?", "type": "main", "index": 0 }]]
+    },
+    "🔍 Skip ?": {
+      "main": [
+        [{ "node": "📥 Annonces dans 30 min", "type": "main", "index": 0 }],
+        [{ "node": "⏭ Ignorer (hors session)", "type": "main", "index": 0 }]
+      ]
+    },
+    "📥 Annonces dans 30 min": {
+      "main": [[{ "node": "🔍 Annonces imminentes ?", "type": "main", "index": 0 }]]
+    },
+    "🔍 Annonces imminentes ?": {
+      "main": [
+        [
+          { "node": "🎨 Formater alerte Discord", "type": "main", "index": 0 },
+          { "node": "📱 Alerte Telegram", "type": "main", "index": 0 },
+          { "node": "🤖 Déclencher scoring IA", "type": "main", "index": 0 }
+        ],
+        [{ "node": "✅ Aucune annonce", "type": "main", "index": 0 }]
+      ]
+    },
+    "🎨 Formater alerte Discord": {
+      "main": [[{ "node": "💬 Alerte Discord", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "timezone": "Europe/Paris",
+    "saveManualExecutions": true
+  },
+  "tags": ["trading", "saasdrevmbot", "alerts"],
+  "meta": {
+    "description": "Vérifie toutes les 15 min les annonces économiques fort impact dans les 30 prochaines minutes. Si détectées : alerte Discord + Telegram + scoring IA automatique."
+  }
+}
