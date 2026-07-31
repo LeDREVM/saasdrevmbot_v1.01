@@ -41,6 +41,7 @@ saasdrevmbot_v1.01/
 | Document | Description |
 |----------|-------------|
 | [QUICKSTART.md](docs/guides/QUICKSTART.md) | Installation en 5 minutes |
+| [INSTALL_TERMUX_ANDROID.md](docs/guides/INSTALL_TERMUX_ANDROID.md) | Installation sur Android (Termux) |
 | [GUIDE_DEMARRAGE_RAPIDE.md](docs/guides/GUIDE_DEMARRAGE_RAPIDE.md) | Trading Economics rapide |
 | [STRUCTURE_PROJET.md](docs/guides/STRUCTURE_PROJET.md) | Arborescence complète |
 | [API_ENDPOINTS.md](docs/guides/API_ENDPOINTS.md) | Endpoints de l'API |
@@ -85,7 +86,7 @@ saasdrevmbot_v1.01/
 |--------|-------|
 | `deploy-netlify.sh` / `.bat` | Déploiement Netlify |
 | `docker-build-push.sh` / `.bat` | Build & push Docker |
-| `setup-termux.sh` | Installation Termux (Android) |
+| `setup-termux.sh` | Installation Termux (Android) — guide : [INSTALL_TERMUX_ANDROID.md](docs/guides/INSTALL_TERMUX_ANDROID.md) |
 | `start_daily_worker.py` / `.bat` | Worker quotidien |
 | `test_trading_economics.py` / `.bat` | Test API Trading Economics |
 
