@@ -78,7 +78,7 @@ simulation.
 
 ---
 
-## 3. Option B — Dashboard Node (port 3000)
+## 3. Option B — Dashboards Node (port 3000)
 
 Aucune dépendance native dans `package.json` (`express`, `socket.io`,
 `discord.js`, `axios`, `cheerio` sont du JS pur) → c'est l'installation la plus
@@ -88,15 +88,176 @@ propre sur Android.
 cd ~/goldyxbotdrevm
 npm install
 cp .env.example .env
-nano .env                 # renseigne au minimum DISCORD_WEBHOOK_URL
 npm start                 # → http://localhost:3000
 ```
 
+Un seul serveur expose trois pages :
+
+| Page | URL | Fichier |
+|---|---|---|
+| Centre de Contrôle | `http://localhost:3000/` | `src/public/home.html` |
+| Calendrier Économique | `http://localhost:3000/dashboard` | `src/public/index.html` |
+| Corrélations Prix ↔ News | `http://localhost:3000/correlations` | `src/public/correlations.html` |
+
+**Discord n'est pas obligatoire.** `src/server.js` démarre le serveur quoi qu'il
+arrive ; sans `DISCORD_WEBHOOK_URL` il affiche simplement `Discord: ❌` au
+démarrage et les dashboards fonctionnent normalement. Ne renseigne le webhook
+dans `.env` que si tu veux les alertes.
+
+Le temps réel marche sans configuration : `src/public/app.js` appelle
+`io({ transports: [...] })` sans URL, donc Socket.io se connecte à l'origine
+servie — y compris via une IP de réseau local.
+
 Mode bot seul, sans serveur web : `npm run bot-only`.
+
+> **Et l'Analytics SvelteKit (port 5173) ?** Déconseillé sur téléphone : `vite dev`
+> tourne, mais le build est long et gourmand en RAM. Les pages Node ci-dessus
+> couvrent déjà calendrier et corrélations.
 
 ---
 
-## 4. Pièges Termux
+## 4. Accéder aux dashboards depuis un autre appareil
+
+Le serveur Node écoute déjà sur toutes les interfaces (`server.listen(PORT)` sans
+hôte → `0.0.0.0`). Il suffit de connaître l'IP du téléphone :
+
+```bash
+pkg install -y net-tools
+ifconfig wlan0 | grep 'inet '
+```
+
+Puis depuis un autre appareil du même Wi-Fi : `http://192.168.x.x:3000`.
+
+**La console Python, elle, écoute sur `127.0.0.1` par défaut** (`api.py`) — c'est
+volontaire, elle peut envoyer des ordres. Pour l'exposer au réseau local :
+
+```bash
+NY_BOT_HOST=0.0.0.0 API_TOKEN="<token-long-et-aleatoire>" REQUIRE_TOKEN=1 python api.py
+```
+
+Ne l'expose jamais sans `REQUIRE_TOKEN=1` (cf. §6.3). Sur Android le moteur est en
+SIMULATION, donc le risque réel est nul — mais prends l'habitude tout de suite.
+
+---
+
+## 5. Garder le serveur vivant
+
+Android tue les process en arrière-plan. Trois niveaux, du plus simple au plus
+durable :
+
+```bash
+# 1. Wakelock — indispensable
+termux-wake-lock          # ou : notification Termux → « Acquire wakelock »
+
+# 2. Survivre à la fermeture de la session shell
+cd ~/goldyxbotdrevm
+nohup npm start > ~/dashboard.log 2>&1 &
+tail -f ~/dashboard.log
+
+# 3. Démarrage automatique au boot du téléphone
+#    installe l'app Termux:Boot depuis F-Droid et ouvre-la une fois, puis :
+mkdir -p ~/.termux/boot
+cat > ~/.termux/boot/dashboard <<'EOF'
+#!/data/data/com.termux/files/usr/bin/sh
+termux-wake-lock
+cd ~/goldyxbotdrevm && npm start
+EOF
+chmod +x ~/.termux/boot/dashboard
+```
+
+Le wakelock ne suffit pas seul : il faut aussi lever la restriction batterie
+côté Android (cf. §6.1).
+
+---
+
+## 6. Permissions
+
+Trois couches indépendantes. C'est en général la deuxième qui coince.
+
+### 6.1 Permissions Android
+
+**Stockage** — accès à `/sdcard` :
+
+```bash
+termux-setup-storage      # accepte la fenêtre Android
+```
+
+Crée `~/storage/` (raccourcis vers `shared`, `downloads`, `dcim`…). Si la fenêtre
+a été refusée : Paramètres → Applications → Termux → Autorisations → Fichiers →
+Autoriser, puis relancer la commande.
+
+**Batterie** — *la* permission qui fait mourir le dashboard. Sans elle, Android
+tue le process dès que tu quittes l'app :
+
+- Paramètres → Applications → Termux → Batterie → **« Sans restriction »**
+- Le chemin varie selon la marque (Samsung : « Autoriser l'activité en
+  arrière-plan » ; Xiaomi : Sécurité → Démarrage automatique + Économiseur →
+  Sans restriction)
+
+**Notifications** (Android 13+) — nécessaire pour voir la notification
+persistante de Termux, donc le bouton wakelock : Paramètres → Applications →
+Termux → Notifications → Autoriser.
+
+**Démarrage au boot** — installer l'app **Termux:Boot** (F-Droid) et l'ouvrir une
+fois ; elle n'affiche rien, c'est normal. Les scripts de `~/.termux/boot/`
+s'exécuteront alors au redémarrage.
+
+### 6.2 Permissions de fichiers (`chmod`)
+
+Les scripts `.sh` du repo sont committés en **644**, sans bit exécutable :
+
+```
+100644  scripts/setup-termux.sh
+100644  scripts/deploy-netlify.sh
+```
+
+D'où le `bash setup-termux.sh` de ce guide plutôt que `./setup-termux.sh`. Pour
+les invoquer directement :
+
+```bash
+chmod +x ~/goldyxbotdrevm/scripts/*.sh
+```
+
+**Le `.env` contient des secrets** (`API_TOKEN`, `TELEGRAM_BOT_TOKEN`,
+`SUPABASE_SERVICE_KEY`, `MT5_PASSWORD`). Restreins-le :
+
+```bash
+chmod 600 ~/goldyxbotdrevm/.env
+chmod 600 ~/goldyxbotdrevm/ny_session_interface/.env
+```
+
+Il est déjà couvert par `.gitignore` — aucun risque de commit accidentel.
+
+Le script de boot doit être exécutable, sinon Termux:Boot l'ignore
+silencieusement : `chmod +x ~/.termux/boot/dashboard`.
+
+⚠️ **`chmod` n'a aucun effet dans `/sdcard`** (montage FUSE sans permissions
+POSIX). Si un script refuse de tourner malgré `chmod +x`, vérifie que tu es bien
+dans `$HOME` et non dans `/sdcard`.
+
+### 6.3 Permissions applicatives (accès à la console)
+
+La console NY Session a son propre contrôle d'accès, indépendant d'Android. Dans
+`ny_session_interface/.env` :
+
+```bash
+API_TOKEN=<chaine-longue-et-aleatoire>
+REQUIRE_TOKEN=1      # exige le token sur TOUTES les routes /api/*, GET compris
+```
+
+Avec `REQUIRE_TOKEN=0` (le défaut), seules les routes POST sont protégées — les
+GET (équité, positions, logs) restent ouverts. Passe-le à `1` dès que le port
+sort de `127.0.0.1`.
+
+Générer un token correct :
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+---
+
+## 7. Pièges Termux
 
 ### Wheels PyPI incompatibles
 
@@ -140,8 +301,8 @@ ln -sfn ~/goldyxbotdrevm /sdcard/dxpedrevm/goldyxbotdrevm
 
 ### Le serveur meurt quand tu quittes Termux
 
-Android tue les process en arrière-plan. Déroule la notification Termux et touche
-**« Acquire wakelock »** avant de lancer le serveur.
+Android tue les process en arrière-plan. Wakelock **et** restriction batterie
+levée — les deux sont nécessaires, voir §5 et §6.1.
 
 ### `backend/requirements.txt` ne passera pas tel quel
 
@@ -152,15 +313,21 @@ et retirer `ta-lib`. Déconseillé — préfère l'option A ou B.
 
 ---
 
-## 5. Dépannage rapide
+## 8. Dépannage rapide
 
 | Symptôme | Cause | Fix |
 |---|---|---|
 | `pkg: command not found` | Termux du Play Store | Réinstaller depuis F-Droid |
 | `ModuleNotFoundError: pandas` | `tur-repo` non installé | `pkg install tur-repo && pkg install python-pandas` |
 | pip compile indéfiniment sur `pydantic-core` | Pas de binaire Rust | `pkg install rust binutils` + `CARGO_BUILD_TARGET=aarch64-linux-android` |
-| `Permission denied` sur git | Clone dans `/sdcard` | Recloner dans `$HOME` |
-| Le serveur s'arrête à l'écran verrouillé | Pas de wakelock | Notification Termux → Acquire wakelock |
+| `Permission denied` sur git | Clone dans `/sdcard` | Recloner dans `$HOME` (§6.2) |
+| `./script.sh: Permission denied` | Scripts committés en 644 | `chmod +x scripts/*.sh`, ou lancer via `bash script.sh` (§6.2) |
+| `chmod +x` sans effet | Fichier dans `/sdcard` (FUSE) | Déplacer dans `$HOME` (§6.2) |
+| Le serveur s'arrête à l'écran verrouillé | Pas de wakelock, ou restriction batterie | §5 et §6.1 — les deux sont nécessaires |
+| `termux-setup-storage` ne fait rien | Permission Fichiers refusée | Paramètres → Termux → Autorisations → Fichiers (§6.1) |
+| Script `~/.termux/boot/` jamais exécuté | Pas exécutable, ou Termux:Boot jamais ouverte | `chmod +x` + ouvrir l'app une fois (§6.1) |
+| Dashboard inaccessible depuis le PC | Mauvaise IP, ou pare-feu Wi-Fi | `ifconfig wlan0` (§4) ; le Node écoute déjà sur `0.0.0.0` |
+| Console 8800 inaccessible depuis le PC | `NY_BOT_HOST` reste sur `127.0.0.1` | `NY_BOT_HOST=0.0.0.0` + `REQUIRE_TOKEN=1` (§4) |
 | Console accessible mais équité figée | Mode SIMULATION (normal) | MT5 n'existe pas sur Android — voir `PRICE_SOURCE=mt5bridge` dans `env.template` pour de vraies bougies |
 
 ---
