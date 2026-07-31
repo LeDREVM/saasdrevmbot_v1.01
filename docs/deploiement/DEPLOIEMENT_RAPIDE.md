@@ -85,9 +85,23 @@ Dans **Netlify Dashboard** → **Site settings** → **Environment variables** :
 
 | Variable | Valeur | Description |
 |----------|--------|-------------|
-| `VITE_API_URL` | `https://your-backend-api.com` | URL de l'API backend |
+| `BACKEND_API_URL` | `https://your-backend-api.com` | Base du backend **FastAPI**, sans slash final. **Requise** : c'est elle qui câble `/api/*` et `/health`. |
+| `EXPRESS_API_URL` | `https://your-express.com` | Base du backend Express « GoldyXbOT » (page Stats → corrélations). Optionnelle : à défaut, retombe sur `BACKEND_API_URL`. |
+| `PROXY_TIMEOUT_MS` | `9000` | Optionnelle. Timeout amont, gardé sous la limite Netlify de 10 s. |
 
-**Important**: Sans cette variable, le site utilisera `http://localhost:8000` par défaut.
+**Comment ça marche** : le site est en **MODE A (reverse-proxy)**. `netlify.toml` fixe
+`VITE_API_URL = ""`, donc le front appelle `/api/...` en **relatif** ; la fonction
+`netlify/functions/api-proxy.js` relaie ensuite vers `BACKEND_API_URL`. Aucune URL backend
+n'est figée dans le bundle et il n'y a pas de CORS à gérer.
+
+**Important** : `netlify.toml` n'interpole **pas** les variables d'environnement — c'est
+précisément pourquoi le proxy passe par une fonction et non par un `[[redirects]]` vers une URL
+en dur. Tant que `BACKEND_API_URL` n'est pas définie, `/api/*` et `/health` répondent
+`503 {"error":"BACKEND_API_URL non configurée"}`. Après avoir ajouté la variable, **redéploie**
+(les env vars ne sont lues qu'au démarrage de la fonction).
+
+> Ne définis `VITE_API_URL` que si tu veux repasser en **MODE B (CORS direct)** — il faut alors
+> retirer les redirects proxy de `netlify.toml` et ouvrir CORS côté FastAPI (section suivante).
 
 ---
 
