@@ -14,6 +14,15 @@
 const _viteApiUrl = import.meta.env.VITE_API_URL;
 export const API_URL = _viteApiUrl === undefined ? 'http://localhost:8000' : _viteApiUrl;
 
+// URL websocket dérivée de API_URL (http→ws, https→wss).
+// Quand API_URL vaut '' (prod Netlify, chemins relatifs), on repart de l'origine
+// courante — un websocket ne peut pas être relatif, il lui faut une URL absolue.
+export const WS_URL = (() => {
+	if (API_URL) return API_URL.replace(/^http/, 'ws');
+	if (typeof window === 'undefined') return '';
+	return window.location.origin.replace(/^http/, 'ws');
+})();
+
 // Mode de l'application
 export const MODE = import.meta.env.MODE || 'development';
 export const IS_DEV = MODE === 'development';
@@ -33,7 +42,11 @@ export const API_ENDPOINTS = {
 	scoringHistory: `${API_URL}/api/scoring/history`,
 	scoringStats: `${API_URL}/api/scoring/stats`,
 	scoringAnalyze: `${API_URL}/api/scoring/analyze`,
-	upcoming: `${API_URL}/api/alerts/upcoming`
+	upcoming: `${API_URL}/api/alerts/upcoming`,
+	// Market data — proxy FastAPI vers Hyperliquid (voir backend/app/api/routes/market.py)
+	marketStatus: `${API_URL}/api/market/status`,
+	marketCandles: `${API_URL}/api/market/candles`, // + `/${coin}`
+	marketStream: `${WS_URL}/api/market/ws`
 };
 
 // Configuration du cache
