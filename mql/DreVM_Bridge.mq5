@@ -4,7 +4,8 @@
 //|                                                                  |
 //|  SETUP MT5 :                                                     |
 //|  Outils → Options → Expert Advisors → Autoriser les requêtes    |
-//|  web vers : http://votre-n8n.example.com                        |
+//|  web vers : http://2.24.14.85:5678  (VPS Hostinger — n8n Docker) |
+//|  URL surchargée par l'input InpWebhookURL si besoin.            |
 //+------------------------------------------------------------------+
 #property copyright "DreVM Trading"
 #property version   "1.00"
@@ -12,8 +13,8 @@
 
 //=== INPUTS ===========================================================
 input group  "── Connexion n8n ──"
-input string InpWebhookURL  = "http://localhost:5678/webhook/drevm";  // URL webhook n8n
-input string InpApiKey      = "drevm-secret-key";                     // clé partagée MT5↔n8n
+input string InpWebhookURL  = "http://2.24.14.85:5678/webhook/drevm"; // URL webhook n8n (VPS Hostinger)
+input string InpApiKey      = "drevm-secret-key";                     // clé partagée MT5↔n8n = $env.DREVM_API_KEY (vps/.env) — IDENTIQUE des 2 côtés, CHANGER en prod
 input int    InpTimeoutMs   = 5000;                                   // timeout HTTP ms
 
 input group  "── Filtres Signal ──"

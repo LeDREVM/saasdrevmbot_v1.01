@@ -229,6 +229,17 @@ Réglages par variables d'environnement (optionnel) :
 - **Docker / VPS** : `vps/docker-compose.yml` reste disponible pour un déploiement conteneurisé ;
   il suffit d'y exporter `BACKEND_URL=http://backend:8000` et `SCREENSHOT_URL=http://screenshot-service:3001`.
   Le même WF5 fonctionne dans les deux mondes.
+- **VPS Hostinger (`2.24.14.85`, gestionnaire Docker n8n/backend)** — pour piloter les
+  services distants au lieu de localhost, surcharge les variables d'environnement
+  (jamais d'IP en dur dans le code) :
+  ```powershell
+  $env:BACKEND_URL    = "http://2.24.14.85:8000"
+  $env:SCREENSHOT_URL = "http://2.24.14.85:3001"
+  python scripts\ny_morning_prep.py --once
+  ```
+  Côté MT5, l'EA `mql/DreVM_Bridge.mq5` poste sur `http://2.24.14.85:5678/webhook/drevm`
+  (valeur par défaut de l'input `InpWebhookURL`, surchargeable dans MetaTrader). Penser à
+  autoriser `http://2.24.14.85` dans *MT5 → Options → Expert Advisors → WebRequest*.
 ```
 
 ## 6. Import CSV du calendrier économique (ForexFactory : daily / week / month)
