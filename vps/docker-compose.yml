@@ -23,6 +23,8 @@ services:
       - MT5_SERVER_PORT=5000
       # Secret partagé n8n ↔ backend (en-tête X-N8N-Secret des workflows WF5, etc.)
       - N8N_WEBHOOK_SECRET=${N8N_WEBHOOK_SECRET}
+      # Clé partagée EA MT5 ↔ n8n (workflow n8n_workflow_drevm.json → $env.DREVM_API_KEY)
+      - DREVM_API_KEY=${DREVM_API_KEY}
     volumes:
       - n8n_data:/home/node/.n8n
     depends_on:
@@ -80,6 +82,46 @@ services:
       - MT5_BRIDGE_PORT=5001
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+    networks:
+      - trading-net
+
+  # ── Serveur Express (hub GoldyXbOT + dashboard /correlations) ────
+  express-hub:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: drevm-express-hub
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - ENABLE_SAAS_API=true
+      - SAAS_API_URL=http://backend:8000
+      - DISCORD_WEBHOOK_URLS=${DISCORD_WEBHOOK_URLS:-}
+      - TIMEZONE=${GENERIC_TIMEZONE:-Europe/Paris}
+    depends_on:
+      - backend
+    networks:
+      - trading-net
+
+  # ── Orchestrateur prep session NY (daemon, 07:00 UTC = 3h Guadeloupe) ──
+  orchestrator:
+    build:
+      context: ..
+      dockerfile: deploy/orchestrator.Dockerfile
+    container_name: drevm-ny-orchestrator
+    restart: unless-stopped
+    environment:
+      - BACKEND_URL=http://backend:8000
+      - SCREENSHOT_URL=http://screenshot-service:3001
+      - N8N_WEBHOOK_SECRET=${N8N_WEBHOOK_SECRET}
+      - NY_MIN_GRADE=${NY_MIN_GRADE:-A}
+      - NY_NEWS_BLACKOUT=${NY_NEWS_BLACKOUT:-1}
+      - NY_WEEKDAYS_ONLY=${NY_WEEKDAYS_ONLY:-1}
+    depends_on:
+      - backend
+      - screenshot-service
     networks:
       - trading-net
 
