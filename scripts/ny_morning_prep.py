@@ -73,6 +73,10 @@ NEWS_IMPACT = [s.strip().capitalize() for s in os.environ.get("NY_NEWS_IMPACT", 
 # Mute : ne PAS envoyer sur Telegram un symbole en blackout (défaut 0 = juste annoter).
 BLACKOUT_MUTE = os.environ.get("NY_BLACKOUT_MUTE", "0") != "0"
 
+# Récapitulatif global : un message/rapport unique synthétisant les N symboles en
+# fin de passe (trié par grade). NON soumis au filtre grade. NY_RECAP=0 pour désactiver.
+RECAP = os.environ.get("NY_RECAP", "1") != "0"
+
 # Devises concernées par symbole ; métaux/pétrole/indices → USD (pilotés par l'USD).
 SYMBOL_CURRENCIES = {
     "XAUUSD": ["USD"], "XAGUSD": ["USD"], "XBRUSD": ["USD"],
@@ -277,6 +281,46 @@ def save_report(symbol: str, result: dict) -> Path:
     return md_path
 
 
+# ── Récapitulatif global ─────────────────────────────────────────────────────
+
+_GRADE_EMOJI = {"A+": "🟢", "A": "🟢", "B": "🟡", "C": "🔴", "D": "🔴"}
+
+
+def _recap_sort_key(row: dict) -> int:
+    """Tri : meilleurs grades d'abord, échecs en dernier."""
+    if not row.get("ok"):
+        return -1
+    g = row.get("grade", "?")
+    return GRADE_ORDER.index(g) if g in GRADE_ORDER else 0
+
+
+def build_recap(rows: list[dict], date: str) -> str:
+    """Construit le message récap HTML (un coup d'œil sur les N symboles)."""
+    ok_rows = [r for r in rows if r.get("ok")]
+    n_bo = sum(1 for r in ok_rows if r.get("blackout"))
+    lines = [
+        f"📋 <b>Récap prep NY — {date}</b>",
+        f"{len(rows)} symbole(s) · {len(ok_rows)} analysé(s) · {n_bo} blackout",
+        "",
+    ]
+    for r in sorted(rows, key=_recap_sort_key, reverse=True):
+        if not r.get("ok"):
+            lines.append(f"❌ <b>{r['symbol']}</b> — échec ({r.get('error', 'inconnu')})")
+            continue
+        emoji = _GRADE_EMOJI.get(r["grade"], "⚪")
+        bo = " 🚫" if r.get("blackout") else ""
+        lines.append(f"{emoji} <b>{r['grade']:2}</b> {r['symbol']:7} {r['action']:5} ({r['bias']}){bo}")
+    return "\n".join(lines)
+
+
+def save_recap(text: str, date: str) -> Path:
+    out_dir = REPORTS_DIR / date
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / "_RECAP.md"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
 # ── Passe complète ───────────────────────────────────────────────────────────
 
 def run_once(symbols: list[str], send_telegram: bool = True) -> int:
@@ -296,6 +340,7 @@ def run_once(symbols: list[str], send_telegram: bool = True) -> int:
         print(f"    Blackout : {', '.join(NEWS_IMPACT)} — {n} news aujourd'hui, mode {mode}")
 
     failures = sent = filtered = blackout = 0
+    recap_rows: list[dict] = []
 
     for symbol in symbols:
         print(f"\n▶ {symbol}")
@@ -323,6 +368,8 @@ def run_once(symbols: list[str], send_telegram: bool = True) -> int:
 
             path = save_report(symbol, result)
             grade, action, bias = _summary_fields(result)
+            recap_rows.append({"symbol": symbol, "ok": True, "grade": grade,
+                               "action": action, "bias": bias, "blackout": bool(bo)})
             tag = "  · 🚫 BLACKOUT" if bo else ""
             print(f"     grade={grade} · action={action} · biais={bias} "
                   f"· rapport → {path.relative_to(REPO_ROOT)}{tag}")
@@ -341,7 +388,17 @@ def run_once(symbols: list[str], send_telegram: bool = True) -> int:
                 filtered += 1
         except RuntimeError as e:
             failures += 1
+            recap_rows.append({"symbol": symbol, "ok": False, "error": str(e)[:60]})
             print(f"  ❌ {symbol} : {e}")
+
+    # ── Récapitulatif global (1 message/rapport, non filtré par grade) ──────────
+    if RECAP and len(symbols) > 1 and recap_rows:
+        day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        recap = build_recap(recap_rows, day)
+        rpath = save_recap(recap, day)
+        print(f"\n📋 Récap → {rpath.relative_to(REPO_ROOT)}")
+        if send_telegram and notify_telegram(recap):
+            print("  📣 Récap envoyé sur Telegram")
 
     ok = len(symbols) - failures
     tg = "OFF" if not send_telegram else f"{sent} envoyé(s), {filtered} filtré(s) (seuil {MIN_GRADE})"
@@ -374,6 +431,7 @@ def run_daemon() -> None:
               f"mode {'mute' if BLACKOUT_MUTE else 'annotation'}.")
     else:
         print("   Blackout news : désactivé.")
+    print(f"   Récap global : {'activé' if RECAP else 'désactivé'}.")
     print(f"   Screenshot : {SCREENSHOT_URL}   Backend : {BACKEND_URL}")
     print("   Ctrl+C pour arrêter.\n")
     while True:
