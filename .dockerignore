@@ -1,0 +1,14 @@
+# Contexte de build minimal (Express root Dockerfile + orchestrateur)
+.git
+**/node_modules
+node_modules
+**/.venv
+.venv
+__pycache__
+**/__pycache__
+*.log
+data/price_cache
+data/ny_reports
+backend/*.db
+*.md
+!package.json
