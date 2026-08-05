@@ -59,7 +59,16 @@ Configurez dans **Netlify Dashboard** → **Site settings** → **Environment va
 
 | Variable | Description | Exemple |
 |----------|-------------|---------|
-| `VITE_API_URL` | URL de l'API Backend | `https://api.drevmbot.com` |
+| `BACKEND_API_URL` | **Requise.** Base du backend FastAPI (sans slash final) — câble `/api/*` et `/health` | `https://api.drevmbot.com` |
+| `EXPRESS_API_URL` | Optionnelle. Base du backend Express « GoldyXbOT » (corrélations) ; à défaut → `BACKEND_API_URL` | `https://goldy.drevmbot.com` |
+| `PROXY_TIMEOUT_MS` | Optionnelle. Timeout amont en ms (défaut `9000`, sous la limite Netlify de 10 s) | `9000` |
+
+Le site tourne en **MODE A (reverse-proxy)** : `netlify.toml` fixe `VITE_API_URL = ""`, le front
+appelle `/api/...` en relatif et `netlify/functions/api-proxy.js` relaie vers `BACKEND_API_URL`.
+Les URLs backend vivent donc dans les env vars (modifiables sans commit) et non dans
+`netlify.toml`, qui **n'interpole pas** les variables d'environnement. Un `BACKEND_API_URL`
+absent produit un `503` JSON explicite, pas une erreur de proxy opaque. **Redéploie** après
+avoir ajouté ou modifié une variable.
 
 ### Déploiement Manuel
 

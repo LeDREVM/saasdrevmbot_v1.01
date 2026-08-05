@@ -32,6 +32,19 @@
   # MODE A activé : le front appelle /api/* en RELATIF, Netlify proxifie (bas).
   VITE_API_URL = ""
 
+  # ── Websocket marché (page /markets) ────────────────────────────────────────
+  # ⚠️ Netlify ne proxifie PAS les websockets : ni les redirects, ni les
+  # Functions ne gèrent l'upgrade HTTP. La règle /api/* ci-dessous couvre donc
+  # le REST, mais PAS /api/market/ws.
+  #
+  # Le websocket doit viser le backend FastAPI EN DIRECT, hors Netlify — même
+  # principe que le tunnel /bot/* plus bas. À configurer dans
+  # Netlify → Site settings → Environment variables :
+  #   VITE_WS_URL = wss://api.mondomaine.com   (ou l'URL d'un tunnel Cloudflare)
+  #
+  # Non défini : la page /markets reste fonctionnelle en historique REST et
+  # affiche « Temps réel non configuré » au lieu de boucler en reconnexion.
+
 # ── Calendrier économique → Netlify Function ──────────────────────────────────
 [[redirects]]
   from   = "/api/calendar"
@@ -50,30 +63,34 @@
   status = 200
 
 # ── [proxy backend] Reverse-proxy vers les backends (MODE A) ──────────────────
-# ⚠️ PLACEHOLDERS À REMPLACER — tant que les URLs "REMPLACE-…" ci-dessous ne
-# pointent pas sur tes vrais backends déployés, les appels /api/* (hors
-# /api/calendar) renverront une erreur sur le site live. Remplace les 3 URLs
-# puis redéploie. L'ORDRE compte : ces règles restent AVANT le fallback SPA /*,
-# et la règle Express (spécifique) AVANT la règle FastAPI (générale).
+# Le proxy passe par la fonction `api-proxy` et NON par une URL en dur, parce
+# que netlify.toml n'interpole PAS les variables d'environnement : une URL
+# écrite ici serait figée dans le repo et imposerait un commit + redéploiement à
+# chaque changement de backend.
 #
-# Corrélations news/prix = backend Express « GoldyXbOT » (Render/VPS, ex. :3000)
-[[redirects]]
-  from   = "/api/stats/correlations"
-  to     = "https://REMPLACE-express.onrender.com/api/stats/correlations"
-  status = 200
-  force  = true
-
-# Reste de l'API applicative = backend FastAPI (:splat = tout ce qui suit, ex. :8000)
+# ⚠️ À CONFIGURER — Netlify → Site settings → Environment variables :
+#   BACKEND_API_URL = https://…   base du backend FastAPI (SANS slash final)
+#   EXPRESS_API_URL = https://…   base du backend Express « GoldyXbOT »
+#                                 (optionnel : à défaut, retombe sur BACKEND_API_URL)
+# Tant que BACKEND_API_URL est vide, /api/* et /health renvoient un 503 JSON
+# explicite (« BACKEND_API_URL non configurée ») au lieu d'une erreur opaque.
+#
+# L'ORDRE compte : ces règles restent APRÈS les fonctions calendrier/n8n
+# ci-dessus (plus spécifiques) et AVANT le fallback SPA /*.
+# Le routage FastAPI vs Express se fait dans netlify/functions/api-proxy.js.
+#
+# Le chemin amont est répété dans la cible (…/api/:splat) : la fonction le
+# retrouve ainsi que Netlify lui expose l'URL d'origine ou l'URL réécrite.
 [[redirects]]
   from   = "/api/*"
-  to     = "https://REMPLACE-fastapi.onrender.com/api/:splat"
+  to     = "/.netlify/functions/api-proxy/api/:splat"
   status = 200
   force  = true
 
 # Health check FastAPI (route racine /health, hors /api/*) — utilisé par la page d'accueil
 [[redirects]]
   from   = "/health"
-  to     = "https://REMPLACE-fastapi.onrender.com/health"
+  to     = "/.netlify/functions/api-proxy/health"
   status = 200
   force  = true
 

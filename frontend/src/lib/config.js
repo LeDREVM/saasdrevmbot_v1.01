@@ -14,6 +14,22 @@
 const _viteApiUrl = import.meta.env.VITE_API_URL;
 export const API_URL = _viteApiUrl === undefined ? 'http://localhost:8000' : _viteApiUrl;
 
+// URL websocket du backend.
+//
+// ⚠️ Netlify ne proxifie PAS les websockets : ni les redirects, ni les Functions
+// ne gèrent l'upgrade HTTP. En MODE A, /api/* passe bien par le proxy (REST),
+// mais le websocket DOIT viser le backend en direct — d'où une variable dédiée.
+//
+//   - VITE_WS_URL défini          → utilisé tel quel (ex. wss://api.mondomaine.com)
+//   - sinon, API_URL absolu        → dérivé de API_URL (dev local, MODE B/CORS)
+//   - sinon (MODE A sans VITE_WS_URL) → '' : pas de temps réel possible.
+//     L'historique REST continue de fonctionner via le proxy.
+const _viteWsUrl = import.meta.env.VITE_WS_URL;
+export const WS_URL = (_viteWsUrl || API_URL || '').replace(/^http/, 'ws');
+
+// Le flux temps réel est-il câblable dans cette configuration ?
+export const WS_AVAILABLE = WS_URL !== '';
+
 // Mode de l'application
 export const MODE = import.meta.env.MODE || 'development';
 export const IS_DEV = MODE === 'development';
@@ -33,7 +49,11 @@ export const API_ENDPOINTS = {
 	scoringHistory: `${API_URL}/api/scoring/history`,
 	scoringStats: `${API_URL}/api/scoring/stats`,
 	scoringAnalyze: `${API_URL}/api/scoring/analyze`,
-	upcoming: `${API_URL}/api/alerts/upcoming`
+	upcoming: `${API_URL}/api/alerts/upcoming`,
+	// Market data — proxy FastAPI vers Hyperliquid (voir backend/app/api/routes/market.py)
+	marketStatus: `${API_URL}/api/market/status`,
+	marketCandles: `${API_URL}/api/market/candles`, // + `/${coin}`
+	marketStream: WS_AVAILABLE ? `${WS_URL}/api/market/ws` : ''
 };
 
 // Configuration du cache

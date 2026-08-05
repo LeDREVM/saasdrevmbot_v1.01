@@ -181,7 +181,13 @@ Réglages par variables d'environnement (optionnel) :
 | `NY_NEWS_BLACKOUT` | `1` | **Blackout news** : détecte les news du jour sur les devises du symbole. `0` désactive. |
 | `NY_NEWS_IMPACT` | `High` | Niveaux d'impact comptés comme blackout (ex : `High,Medium`). |
 | `NY_BLACKOUT_MUTE` | `0` | `1` → ne PAS envoyer sur Telegram un symbole en blackout (au lieu de juste l'annoter). |
+| `NY_RECAP` | `1` | **Récapitulatif global** : un message/rapport unique synthétisant les N symboles (trié par grade) en fin de passe. `0` désactive. |
 | `SCREENSHOT_URL` / `BACKEND_URL` | `localhost:3001` / `:8000` | Cibles des services. |
+
+> **Récap global** — en fin de passe, un **message Telegram unique** (et un fichier
+> `data/ny_reports/<date>/_RECAP.md`) résume les N symboles d'un coup d'œil : trié par
+> grade (A+ → D), avec action, biais et marqueur `🚫` blackout ; les échecs figurent en bas.
+> Ce récap **n'est pas** soumis au filtre `NY_MIN_GRADE` (c'est la vue d'ensemble).
 
 > **Blackout news** — avant l'analyse, l'orchestrateur récupère **une fois** le calendrier
 > économique du jour (`GET /api/n8n/calendar/today?impact=High`) et, pour chaque symbole,
