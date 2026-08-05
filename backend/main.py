@@ -4,7 +4,8 @@ import logging
 
 from app.core.config import settings
 from app.core.database import init_db
-from app.api.routes import calendar, stats, nextcloud, alerts, alert_config, trading_economics, n8n, scoring, vision
+from app.api.routes import calendar, stats, nextcloud, alerts, alert_config, trading_economics, n8n, scoring, vision, market
+from app.services.market_data import hyperliquid_feed
 
 # Configuration du logging
 logging.basicConfig(
@@ -41,6 +42,7 @@ app.include_router(trading_economics.router, prefix=f"{settings.API_V1_STR}/trad
 app.include_router(n8n.router, prefix=settings.API_V1_STR)
 app.include_router(scoring.router, prefix=settings.API_V1_STR)
 app.include_router(vision.router, prefix=settings.API_V1_STR)
+app.include_router(market.router, prefix=settings.API_V1_STR)
 
 
 @app.on_event("startup")
@@ -55,11 +57,18 @@ async def startup_event():
     except Exception as e:
         logger.error(f"❌ Erreur initialisation DB: {e}")
 
+    # Feed marché Hyperliquid (websocket amont unique, partagé par tous les clients)
+    try:
+        await hyperliquid_feed.start()
+    except Exception as e:
+        logger.error(f"❌ Erreur démarrage feed Hyperliquid: {e}")
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Nettoyage à l'arrêt"""
     logger.info("👋 Arrêt de l'application...")
+    await hyperliquid_feed.stop()
 
 
 @app.get("/")
