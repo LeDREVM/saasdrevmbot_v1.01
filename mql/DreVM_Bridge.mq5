@@ -14,7 +14,7 @@
 //=== INPUTS ===========================================================
 input group  "── Connexion n8n ──"
 input string InpWebhookURL  = "http://2.24.14.85:5678/webhook/drevm"; // URL webhook n8n (VPS Hostinger)
-input string InpApiKey      = "drevm-secret-key";                     // clé partagée MT5↔n8n
+input string InpApiKey      = "drevm-secret-key";                     // clé partagée MT5↔n8n = $env.DREVM_API_KEY (vps/.env) — IDENTIQUE des 2 côtés, CHANGER en prod
 input int    InpTimeoutMs   = 5000;                                   // timeout HTTP ms
 
 input group  "── Filtres Signal ──"
