@@ -32,6 +32,19 @@
   # MODE A activé : le front appelle /api/* en RELATIF, Netlify proxifie (bas).
   VITE_API_URL = ""
 
+  # ── Websocket marché (page /markets) ────────────────────────────────────────
+  # ⚠️ Netlify ne proxifie PAS les websockets : ni les redirects, ni les
+  # Functions ne gèrent l'upgrade HTTP. La règle /api/* ci-dessous couvre donc
+  # le REST, mais PAS /api/market/ws.
+  #
+  # Le websocket doit viser le backend FastAPI EN DIRECT, hors Netlify — même
+  # principe que le tunnel /bot/* plus bas. À configurer dans
+  # Netlify → Site settings → Environment variables :
+  #   VITE_WS_URL = wss://api.mondomaine.com   (ou l'URL d'un tunnel Cloudflare)
+  #
+  # Non défini : la page /markets reste fonctionnelle en historique REST et
+  # affiche « Temps réel non configuré » au lieu de boucler en reconnexion.
+
 # ── Calendrier économique → Netlify Function ──────────────────────────────────
 [[redirects]]
   from   = "/api/calendar"

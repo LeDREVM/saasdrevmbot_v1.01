@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { createChart, CandlestickSeries, ColorType } from 'lightweight-charts';
 	import { connectMarketFeed, fetchCandles } from '$lib/services/marketFeed.js';
+	import { WS_AVAILABLE } from '$lib/config.js';
 
 	/** Actifs suivis par le backend (voir COINS dans hyperliquid_feed.py). */
 	const coins = [
@@ -137,6 +138,11 @@
 		chart?.remove();
 	});
 
+	$: statusLabel = !WS_AVAILABLE
+		? 'Temps réel non configuré'
+		: connected
+			? 'Flux connecté'
+			: 'Flux interrompu';
 	$: currentLabel = coins.find((c) => c.id === selected)?.label ?? selected;
 	$: priceLabel = lastCandle ? lastCandle.close.toLocaleString('fr-FR') : '—';
 	$: direction = lastCandle ? (lastCandle.close >= lastCandle.open ? 'up' : 'down') : 'flat';
@@ -151,7 +157,7 @@
 
 		<div class="hl-status" role="status">
 			<span class="hl-dot" class:online={connected} aria-hidden="true"></span>
-			<span>{connected ? 'Flux connecté' : 'Flux interrompu'}</span>
+			<span>{statusLabel}</span>
 		</div>
 	</header>
 
@@ -190,6 +196,14 @@
 			<p class="hl-overlay hl-error" role="alert">{error}</p>
 		{/if}
 	</div>
+
+	{#if !WS_AVAILABLE}
+		<p class="hl-note hl-warn">
+			Le flux temps réel n'est pas câblé : Netlify ne proxifie pas les websockets. Définir
+			<code>VITE_WS_URL</code> vers le backend en direct pour l'activer. L'historique ci-dessus
+			reste à jour à chaque chargement de page.
+		</p>
+	{/if}
 
 	<p class="hl-note">
 		Données de marché publiques, en lecture seule — aucun ordre n'est transmis depuis cette page.
@@ -354,6 +368,21 @@
 		margin: 16px 0 0;
 		font-size: 13px;
 		color: var(--text-dim);
+	}
+
+	.hl-warn {
+		padding: 12px 16px;
+		border: 1px solid var(--border-strong);
+		border-left: 3px solid var(--warning);
+		border-radius: var(--radius-sm);
+		background: var(--surface-2);
+		color: var(--text-muted);
+		line-height: 1.6;
+	}
+
+	.hl-warn code {
+		font-family: var(--font-mono);
+		color: var(--text);
 	}
 
 	@media (max-width: 600px) {

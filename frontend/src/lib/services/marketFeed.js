@@ -9,7 +9,7 @@
  * redémarrage du backend laisse le chart figé sans aucun signal visible.
  */
 
-import { API_ENDPOINTS } from '$lib/config.js';
+import { API_ENDPOINTS, WS_AVAILABLE } from '$lib/config.js';
 
 const BACKOFF_START = 1000;
 const BACKOFF_MAX = 30000;
@@ -23,6 +23,14 @@ const BACKOFF_MAX = 30000;
  * @returns {() => void} fonction de fermeture — À APPELER dans onDestroy
  */
 export function connectMarketFeed({ onCandle, onStatus }) {
+	// Aucune URL websocket câblable (MODE A Netlify sans VITE_WS_URL) : on
+	// n'ouvre rien. Ouvrir malgré tout ferait boucler la reconnexion à l'infini
+	// contre un proxy qui ne sait pas gérer l'upgrade HTTP.
+	if (!WS_AVAILABLE) {
+		onStatus?.(false);
+		return () => {};
+	}
+
 	/** @type {WebSocket | null} */
 	let socket = null;
 	/** @type {ReturnType<typeof setTimeout> | undefined} */
