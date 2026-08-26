@@ -94,6 +94,11 @@ input double         InpAtrMult         = 2.0;
 input group "=== NEWS BLACKOUT ==="
 input string         InpNewsTimes       = "";              // "YYYY.MM.DD HH:MM-HH:MM;..."
 input int            InpNewsBufferMin   = 2;
+input bool           InpUseMt5Calendar  = true;            // Calendrier économique MT5 automatique
+input string         InpNewsCurrencies  = "USD;JPY";       // Devises surveillées pour USDJPY
+input ENUM_CALENDAR_EVENT_IMPORTANCE InpMinNewsImpact = CALENDAR_IMPORTANCE_HIGH;
+input int            InpNewsBeforeMin   = 15;              // Blocage avant l'annonce
+input int            InpNewsAfterMin    = 15;              // Blocage après l'annonce
 
 input group "=== ALERTES ==="
 input bool           InpPushNotif       = true;
@@ -139,6 +144,7 @@ double   dayStartEquity = 0.0;
 datetime dayStartStamp  = 0;
 bool     dayStopped     = false;
 int      tradesToday    = 0;     // compteur de trades ouverts aujourd'hui
+string   newsBlockReason = "";
 
 //+------------------------------------------------------------------+
 string GV(const string key) { return gvPrefix + key; }
@@ -303,7 +309,7 @@ void OnTick()
      }
    if(IsNewsBlackout())
      {
-      UpdateDisplay("📰 News blackout");
+      UpdateDisplay("📰 " + newsBlockReason);
       return;
      }
 
@@ -658,6 +664,9 @@ void UpdateCircuitBreakers()
 //+------------------------------------------------------------------+
 bool IsNewsBlackout()
   {
+   newsBlockReason = "News blackout";
+   if(InpUseMt5Calendar && IsMt5CalendarBlackout()) return true;
+
    if(StringLen(InpNewsTimes) == 0) return false;
 
    string windows[];
@@ -680,7 +689,51 @@ bool IsNewsBlackout()
       datetime tStart = StringToTime(startStr) - InpNewsBufferMin * 60;
       datetime tEnd   = StringToTime(endStr)   + InpNewsBufferMin * 60;
 
-      if(now >= tStart && now <= tEnd) return true;
+      if(now >= tStart && now <= tEnd)
+        {
+         newsBlockReason = "Fenêtre news manuelle";
+         return true;
+        }
+     }
+   return false;
+  }
+
+//+------------------------------------------------------------------+
+//| Blackout automatique des annonces USD/JPY du calendrier MT5     |
+//| Les heures du calendrier et TimeTradeServer utilisent le même   |
+//| fuseau serveur : aucune conversion locale n'est nécessaire.      |
+//+------------------------------------------------------------------+
+bool IsMt5CalendarBlackout()
+  {
+   datetime now = TimeTradeServer();
+   if(now <= 0) now = TimeCurrent();
+
+   datetime from = now - MathMax(InpNewsAfterMin, 0) * 60;
+   datetime to   = now + MathMax(InpNewsBeforeMin, 0) * 60;
+
+   string currencies[];
+   int currencyCount = StringSplit(InpNewsCurrencies, ';', currencies);
+   for(int c = 0; c < currencyCount; c++)
+     {
+      string currency = currencies[c];
+      StringTrimLeft(currency); StringTrimRight(currency);
+      if(StringLen(currency) == 0) continue;
+
+      MqlCalendarValue values[];
+      ResetLastError();
+      int count = CalendarValueHistory(values, from, to, NULL, currency);
+      if(count <= 0) continue; // garde la fenêtre manuelle comme fallback
+
+      for(int i = 0; i < count; i++)
+        {
+         MqlCalendarEvent event;
+         if(!CalendarEventById(values[i].event_id, event)) continue;
+         if(event.importance < InpMinNewsImpact) continue;
+
+         int mins = (int)MathRound((values[i].time - now) / 60.0);
+         newsBlockReason = StringFormat("%s %s (%+d min)", currency, event.name, mins);
+         return true;
+        }
      }
    return false;
   }
