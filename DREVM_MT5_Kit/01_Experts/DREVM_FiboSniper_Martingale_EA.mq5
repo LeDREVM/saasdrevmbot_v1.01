@@ -24,7 +24,7 @@
 #property strict
 
 #include <Trade/Trade.mqh>
-#include "DREVM_CorrelationGuard.mqh"
+#include "..\03_Include\DREVM_CorrelationGuard.mqh"
 CTrade trade;
 
 //=== ENUMS ==========================================================
@@ -80,6 +80,11 @@ input int            InpSweepLookback   = 20;
 input int            InpBosLookback     = 10;
 input int            InpTriggerExpiry   = 12;
 
+input group "=== ACCUMULATION / DISTRIBUTION ==="
+input bool           InpTradeAccumDist  = true;             // Spring=BUY, Upthrust=SELL
+input bool           InpRequireEmaAlign = true;             // Confirmer la direction avec EMA H1
+input double         InpWyckoffSlAtrPad = 0.35;             // Marge SL au-delà du sweep (ATR M5)
+
 input group "=== SORTIES ==="
 input double         InpRRTarget        = 1.5;             // R/R cible (plus court en martingale)
 input bool           InpUseAtrTrailing  = true;
@@ -121,6 +126,7 @@ int      trendFibo = 0;
 bool     sweepDetected  = false;
 int      sweepDirection = 0;
 datetime sweepTime      = 0;
+double   sweepExtreme   = 0.0;
 
 string   gvPrefix = "";
 
@@ -399,9 +405,17 @@ void DetectSweep()
    double c1 = iClose(_Symbol, PERIOD_M5, 1);
 
    if(h1 > refHigh && c1 < refHigh)
-     { sweepDetected = true; sweepDirection = -1; sweepTime = iTime(_Symbol, PERIOD_M5, 1); }
+     {
+      // Upthrust au-dessus de la range, puis réintégration = distribution.
+      sweepDetected = true; sweepDirection = -1;
+      sweepTime = iTime(_Symbol, PERIOD_M5, 1); sweepExtreme = h1;
+     }
    else if(l1 < refLow && c1 > refLow)
-     { sweepDetected = true; sweepDirection = 1; sweepTime = iTime(_Symbol, PERIOD_M5, 1); }
+     {
+      // Spring sous la range, puis réintégration = accumulation.
+      sweepDetected = true; sweepDirection = 1;
+      sweepTime = iTime(_Symbol, PERIOD_M5, 1); sweepExtreme = l1;
+     }
   }
 
 //+------------------------------------------------------------------+
@@ -423,16 +437,19 @@ int DetectBos()
 void EvaluateSetup(const int emaBias, const int bosDir)
   {
    double fibPct = CurrentFibPercent();
-   int dir = trendFibo;
+   bool wyckoffSetup = (InpTradeAccumDist && sweepDetected && sweepDirection != 0);
+   int dir = wyckoffSetup ? sweepDirection : trendFibo;
 
    bool cBias  = (emaBias == dir);
    bool cFib   = (fibPct >= InpFibEntryMin && fibPct <= InpFibEntryMax);
    bool cSweep = (sweepDetected && sweepDirection == dir);
    bool cBos   = (bosDir == dir);
-   bool cValid = (fibPct < InpFibInvalid && fibPct >= 0.0);
+   // En mode Wyckoff, la réintégration du sweep valide la structure. Fibonacci
+   // reste une confluence et non une condition directionnelle obligatoire.
+   bool cValid = wyckoffSetup || (fibPct < InpFibInvalid && fibPct >= 0.0);
 
    double entry, sl, tp;
-   BuildTradeLevels(dir, entry, sl, tp);
+   BuildTradeLevels(dir, wyckoffSetup, entry, sl, tp);
    double risk   = MathAbs(entry - sl);
    double reward = MathAbs(tp - entry);
    bool cRR      = (risk > 0.0 && reward / risk >= InpRRTarget);
@@ -451,11 +468,15 @@ void EvaluateSetup(const int emaBias, const int bosDir)
    UpdateDisplay("Scan", fibPct, score, GradeToString(grade));
 
    if(!cSweep || !cBos) return;
+   if(wyckoffSetup && InpRequireEmaAlign && !cBias) return;
    if(grade < InpMinGrade) return;
    if(HasOpenPosition()) return;
 
-   string msg = StringFormat("DREVM-M %s SETUP %s [%s %d/6] Marti niv %d lot %.2f | E:%.2f SL:%.2f TP:%.2f",
-               _Symbol, dir > 0 ? "BUY" : "SELL", GradeToString(grade), score,
+   string setupName = wyckoffSetup
+                      ? (dir > 0 ? "ACCUMULATION/SPRING" : "DISTRIBUTION/UPTHRUST")
+                      : "FIBO";
+   string msg = StringFormat("DREVM-M %s %s %s [%s %d/6] Marti niv %d lot %.2f | E:%.2f SL:%.2f TP:%.2f",
+               _Symbol, setupName, dir > 0 ? "BUY" : "SELL", GradeToString(grade), score,
                martiStep, nextLot, entry, sl, tp);
 
    if(InpExecMode == MODE_ALERT_ONLY)
@@ -491,7 +512,8 @@ void EvaluateSetup(const int emaBias, const int bosDir)
   }
 
 //+------------------------------------------------------------------+
-void BuildTradeLevels(const int dir, double &entry, double &sl, double &tp)
+void BuildTradeLevels(const int dir, const bool wyckoffSetup,
+                      double &entry, double &sl, double &tp)
   {
    double atr[1];
    double atrVal = 0.0;
@@ -500,13 +522,21 @@ void BuildTradeLevels(const int dir, double &entry, double &sl, double &tp)
    entry = (dir > 0) ? SymbolInfoDouble(_Symbol, SYMBOL_ASK)
                      : SymbolInfoDouble(_Symbol, SYMBOL_BID);
 
-   double range   = swingHigh - swingLow;
-   double invalid = (dir > 0)
-                    ? swingHigh - range * (InpFibInvalid / 100.0)
-                    : swingLow  + range * (InpFibInvalid / 100.0);
-
-   double pad = MathMax(atrVal * 0.5, 10 * _Point);
-   sl = (dir > 0) ? invalid - pad : invalid + pad;
+   double range = swingHigh - swingLow;
+   double pad;
+   if(wyckoffSetup && sweepExtreme > 0.0)
+     {
+      pad = MathMax(atrVal * InpWyckoffSlAtrPad, 10 * _Point);
+      sl = (dir > 0) ? sweepExtreme - pad : sweepExtreme + pad;
+     }
+   else
+     {
+      double invalid = (dir > 0)
+                       ? swingHigh - range * (InpFibInvalid / 100.0)
+                       : swingLow  + range * (InpFibInvalid / 100.0);
+      pad = MathMax(atrVal * 0.5, 10 * _Point);
+      sl = (dir > 0) ? invalid - pad : invalid + pad;
+     }
 
    double risk = MathAbs(entry - sl);
    tp = (dir > 0) ? entry + risk * InpRRTarget : entry - risk * InpRRTarget;

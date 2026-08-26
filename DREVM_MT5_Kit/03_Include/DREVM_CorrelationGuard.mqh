@@ -124,24 +124,19 @@ void CorrGuard_UpdateMatrix()
    if(TimeCurrent() - corrLastCalc < CORR_CACHE_SECONDS) return;
    corrLastCalc = TimeCurrent();
 
-   double rets[5][];
-   bool   ok[5];
-   double tmp[];
-   for(int i = 0; i < 5; i++)
-     {
-      ok[i] = CorrGuard_Returns(CORR_SYMBOLS[i], tmp);
-      if(ok[i])
-        {
-         ArrayResize(rets[i], ArraySize(tmp));
-         ArrayCopy(rets[i], tmp);
-        }
-     }
+   // MQL5 ne prend pas en charge les tableaux dynamiques imbriqués. Calculer
+   // chaque paire une fois, puis recopier la valeur symétrique dans la matrice.
+   for(int i = 0; i < 5; i++) corrMatrix[i][i] = 1.0;
 
    for(int i = 0; i < 5; i++)
-      for(int j = 0; j < 5; j++)
+      for(int j = i + 1; j < 5; j++)
         {
-         if(i == j) { corrMatrix[i][j] = 1.0; continue; }
-         corrMatrix[i][j] = (ok[i] && ok[j]) ? CorrGuard_Pearson(rets[i], rets[j]) : 0.0;
+         double retsA[], retsB[];
+         bool okA = CorrGuard_Returns(CORR_SYMBOLS[i], retsA);
+         bool okB = CorrGuard_Returns(CORR_SYMBOLS[j], retsB);
+         double corr = (okA && okB) ? CorrGuard_Pearson(retsA, retsB) : 0.0;
+         corrMatrix[i][j] = corr;
+         corrMatrix[j][i] = corr;
         }
   }
 
