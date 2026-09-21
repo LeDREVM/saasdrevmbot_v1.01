@@ -100,6 +100,8 @@ services:
       - SAAS_API_URL=http://backend:8000
       - DISCORD_WEBHOOK_URLS=${DISCORD_WEBHOOK_URLS:-}
       - TIMEZONE=${GENERIC_TIMEZONE:-Europe/Paris}
+    volumes:
+      - drevm_data:/app/data          # events_log.json + price_cache (persistant)
     depends_on:
       - backend
     networks:
@@ -119,6 +121,8 @@ services:
       - NY_MIN_GRADE=${NY_MIN_GRADE:-A}
       - NY_NEWS_BLACKOUT=${NY_NEWS_BLACKOUT:-1}
       - NY_WEEKDAYS_ONLY=${NY_WEEKDAYS_ONLY:-1}
+    volumes:
+      - drevm_data:/app/data          # rapports data/ny_reports (persistant, partagé avec express-hub)
     depends_on:
       - backend
       - screenshot-service
@@ -131,3 +135,4 @@ networks:
 
 volumes:
   n8n_data:
+  drevm_data:
