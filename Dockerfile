@@ -12,11 +12,16 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-# Code + données seed (events_log.json pour le moteur de corrélation)
+# Code + données seed. Le seed est copié HORS du point de montage du volume
+# (/app/data-seed) ; l'entrypoint alimente /app/data si le volume est vierge,
+# pour ne pas perdre events_log.json quand un volume nommé masque l'image.
 COPY src ./src
-COPY data ./data
+COPY data ./data-seed
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENV PORT=3000
 EXPOSE 3000
 
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "src/server.js"]

@@ -126,3 +126,10 @@ Format : `L## — Titre / Symptôme / Cause racine / Fix / Date`
 - **Règle à retenir** : le reverse-proxy Netlify est une solution **REST uniquement**. Toute fonctionnalité temps réel (websocket, SSE long-lived) doit sortir de Netlify et viser le backend directement, via sa propre variable d'environnement. Corollaire : une dégradation doit être **nommée** (« Temps réel non configuré ») et non confondue avec une panne (« Flux interrompu ») — sinon un défaut de configuration se déguise en incident.
 - **Règle de vérification** : un build de prod inspecté au grep ne suffit pas à prouver un comportement réseau. Ici les deux modes ont été rejoués sur `vite preview` dans un vrai navigateur — MODE B (flux connecté, bascule d'actif → `200`) et MODE A (aucune tentative de connexion websocket en console).
 - **Date** : 2026-08-05
+
+## L15 — Un volume Docker nommé masque les fichiers seed embarqués dans l'image
+
+- **Symptôme** : après ajout d'un volume persistant `drevm_data:/app/data`, le hub Express démarre avec un `events_log.json` vide (« les données s'accumulent »), alors que l'image le contient.
+- **Cause racine** : un volume nommé monté sur un chemin **masque** ce que le `COPY` de l'image y avait mis — au 1er démarrage le volume est vierge, l'image n'est plus visible sous le point de montage.
+- **Fix** : copier le seed HORS du point de montage (`COPY data ./data-seed`) puis, via un entrypoint idempotent, l'injecter dans le volume s'il est vierge (`cp -rn /app/data-seed/. /app/data/` gardé par `[ ! -f /app/data/events_log.json ]`). Voir `Dockerfile` + `docker-entrypoint.sh`.
+- **Date** : 2026-09-21
