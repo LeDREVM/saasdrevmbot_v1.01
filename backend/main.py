@@ -26,7 +26,11 @@ app = FastAPI(
 # Configuration CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # À restreindre en production
+    allow_origins=[
+        origin.strip()
+        for origin in settings.BACKEND_CORS_ORIGINS.split(",")
+        if origin.strip()
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -54,8 +58,9 @@ async def startup_event():
     try:
         init_db()
         logger.info("✅ Base de données initialisée")
-    except Exception as e:
-        logger.error(f"❌ Erreur initialisation DB: {e}")
+    except Exception:
+        logger.exception("❌ Erreur initialisation DB — démarrage interrompu")
+        raise
 
     # Feed marché Hyperliquid (websocket amont unique, partagé par tous les clients)
     try:
