@@ -19,18 +19,29 @@ class NotificationManager:
         self,
         prediction: Dict,
         channels: List[str] = ['discord']
-    ):
+    ) -> Dict[str, bool]:
         """
-        Envoie une alerte prédictive formatée
-        
+        Envoie une alerte prédictive formatée et retourne le résultat par canal.
+
         channels: ['discord', 'telegram']
         """
-        
-        if 'discord' in channels and self.discord_webhook:
-            self._send_discord_alert(prediction)
-        
-        if 'telegram' in channels and self.telegram_token:
-            self._send_telegram_alert(prediction)
+        results = {}
+
+        if 'discord' in channels:
+            results['discord'] = (
+                self._send_discord_alert(prediction)
+                if self.discord_webhook
+                else False
+            )
+
+        if 'telegram' in channels:
+            results['telegram'] = (
+                self._send_telegram_alert(prediction)
+                if self.telegram_token and self.telegram_chat_id
+                else False
+            )
+
+        return results
     
     def _send_discord_alert(self, prediction: Dict):
         """Envoie alerte Discord avec embed riche"""
@@ -130,14 +141,16 @@ class NotificationManager:
             response = requests.post(self.discord_webhook, json=payload)
             response.raise_for_status()
             logger.info(f"✅ Alerte Discord envoyée: {event['event_name']}")
+            return True
         except Exception as e:
             logger.error(f"Erreur envoi Discord: {e}")
+            return False
     
     def _send_telegram_alert(self, prediction: Dict):
         """Envoie alerte Telegram formatée"""
         
         if not self.telegram_token or not self.telegram_chat_id:
-            return
+            return False
         
         event = prediction['event']
         pred = prediction['prediction']
@@ -182,8 +195,10 @@ _Basé sur {pred['historical_samples']} événements historiques_
             response = requests.post(url, json=payload)
             response.raise_for_status()
             logger.info(f"✅ Alerte Telegram envoyée: {event['event_name']}")
+            return True
         except Exception as e:
             logger.error(f"Erreur envoi Telegram: {e}")
+            return False
     
     def send_daily_summary(
         self,
