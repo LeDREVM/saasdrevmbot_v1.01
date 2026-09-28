@@ -7,6 +7,7 @@ import logging
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.services.alerts.alert_predictor import AlertPredictor
+from app.services.alerts.alert_deduplication import claim_alert, release_alert
 from app.services.alerts.notification_manager import NotificationManager
 from app.services.alerts.markdown_exporter import MarkdownExporter
 from app.services.economic_calendar.calendar_aggregator import CalendarAggregator
@@ -73,13 +74,68 @@ def check_upcoming_alerts():
                 prediction = predictor.predict_upcoming_impact(event, symbol, db)
                 
                 if prediction and prediction['prediction']['risk_level'] in ['extreme', 'high']:
-                    # Envoyer alerte
-                    notifier.send_predictive_alert(
-                        prediction,
-                        channels=['discord', 'telegram']
-                    )
-                    
-                    logger.info(f"✅ Alerte envoyée: {event.event} ({symbol})")
+                    channels = []
+                    if settings.DISCORD_WEBHOOK_URL:
+                        channels.append('discord')
+                    if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_CHAT_ID:
+                        channels.append('telegram')
+
+                    if not channels:
+                        logger.warning("Aucun canal de notification configuré")
+                        continue
+
+                    claimed = []
+                    for channel in channels:
+                        claim_key = claim_alert(
+                            db,
+                            prediction['event'],
+                            symbol,
+                            alert_type='predictive',
+                            channel=channel,
+                        )
+                        if claim_key:
+                            claimed.append((channel, claim_key))
+
+                    if not claimed:
+                        logger.info(
+                            "⏭️ Alerte déjà envoyée: %s (%s)",
+                            event.event,
+                            symbol,
+                        )
+                        continue
+
+                    requested_channels = [channel for channel, _ in claimed]
+                    try:
+                        results = notifier.send_predictive_alert(
+                            prediction,
+                            channels=requested_channels,
+                        )
+                    except Exception:
+                        for _, claim_key in claimed:
+                            release_alert(db, claim_key)
+                        raise
+
+                    for channel, claim_key in claimed:
+                        if not results.get(channel, False):
+                            release_alert(db, claim_key)
+
+                    successful_channels = [
+                        channel for channel, _ in claimed
+                        if results.get(channel, False)
+                    ]
+                    if successful_channels:
+                        logger.info(
+                            "✅ Alerte envoyée (%s): %s (%s)",
+                            ','.join(successful_channels),
+                            event.event,
+                            symbol,
+                        )
+                    else:
+                        logger.warning(
+                            "⚠️ Échec d'envoi: %s (%s)",
+                            event.event,
+                            symbol,
+                        )
         
     except Exception as e:
         logger.error(f"Erreur check_upcoming_alerts: {e}")
