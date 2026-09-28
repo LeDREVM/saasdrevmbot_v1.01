@@ -58,3 +58,18 @@ class AlertLog(Base):
     
     def __repr__(self):
         return f"<AlertLog {self.alert_type} @ {self.sent_at}>"
+
+
+class AlertDeduplication(Base):
+    """Réservation persistante empêchant le renvoi d'une alerte identique."""
+    __tablename__ = "alert_deduplications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    dedupe_key = Column(String(64), nullable=False, unique=True, index=True)
+    alert_type = Column(String, nullable=False)
+    channel = Column(String, nullable=False)
+    symbol = Column(String, nullable=False)
+    claimed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    def __repr__(self):
+        return f"<AlertDeduplication {self.dedupe_key}>"
