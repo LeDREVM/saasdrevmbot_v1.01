@@ -1,4 +1,5 @@
 <script>
+  import { guadeloupeTime } from '$lib/api-client.js';
   /** @type {any} */
   export let score;
 
@@ -23,9 +24,7 @@
   function fmtTime(iso) {
     if (!iso) return '';
     try {
-      return new Date(iso).toLocaleString('fr-FR', {
-        day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
-      });
+      return guadeloupeTime(iso);
     } catch { return iso; }
   }
 
@@ -60,6 +59,12 @@
     <p class="sc-reasoning">{score.reasoning}</p>
   {/if}
 
+  {#if score.technical_baseline}
+    <details><summary>Score technique déclaré : {score.technical_baseline.points}/{score.technical_baseline.max}</summary>
+      {#each score.technical_baseline.criteria as criterion}<p>{criterion.label} : {criterion.points}/{criterion.max}</p>{/each}
+    </details>
+  {/if}
+
   {#if score.risk_factors && score.risk_factors.length}
     <div class="sc-risks">
       {#each score.risk_factors as risk}
@@ -69,7 +74,7 @@
   {/if}
 
   <div class="sc-footer">
-    <span class="ts">{fmtTime(score.generated_at)}</span>
+    <span class="ts">{score.provider || 'Historique'} · {fmtTime(score.generated_at)} · Guadeloupe</span>
   </div>
 </div>
 

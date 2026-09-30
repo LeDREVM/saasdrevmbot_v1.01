@@ -8,7 +8,7 @@
 		{ path: '/calendar', icon: '📅', label: 'Calendrier', description: 'Événements économiques' },
 		{ path: '/alerts', icon: '🔔', label: 'Alertes', description: 'Notifications et config' },
 		{ path: '/markets', icon: '📈', label: 'Marchés', description: 'Bougies temps réel (Hyperliquid)' },
-		{ path: '/scoring', icon: '🤖', label: 'Scoring IA', description: 'Analyse des setups par IA' },
+		{ path: '/scoring', icon: '🎯', label: 'Scoring local', description: 'Barème détaillé des setups' },
 		{ path: '/journal', icon: '📓', label: 'Journal', description: 'Journal de trading (trades, sessions, règles)' },
 		{ path: '/stats', icon: '📊', label: 'Statistiques', description: 'Analyses et corrélations' }
 	];

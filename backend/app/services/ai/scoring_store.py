@@ -1,83 +1,96 @@
-"""
-Persistance simple des résultats de scoring IA dans un fichier JSON.
-(Léger, sans dépendance DB — suffisant pour l'historique du dashboard.)
-"""
-
+"""Bounded JSON history with process locking and atomic replacement."""
 import json
-import logging
 import os
-from datetime import datetime
+import tempfile
+from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List
+from uuid import uuid4
 
-logger = logging.getLogger(__name__)
+from app.services.ai.scoring_contract import validate_result
 
 _STORE_PATH = Path(os.getenv("SCORING_STORE_PATH", "data/scoring_history.json"))
 _MAX_ENTRIES = 500
 
 
-def _ensure_store() -> None:
+@contextmanager
+def _locked():
     _STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(str(_STORE_PATH) + ".lock", "a+b") as handle:
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"0")
+            handle.flush()
+        handle.seek(0)
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            handle.seek(0)
+            if os.name == "nt":
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _read():
     if not _STORE_PATH.exists():
-        _STORE_PATH.write_text("[]", encoding="utf-8")
-
-
-def save_score(result: Dict) -> None:
-    """Ajoute un résultat de scoring en tête de l'historique (FIFO borné)."""
-    try:
-        _ensure_store()
-        history = load_scores()
-        entry = {**result}
-        entry.setdefault("generated_at", datetime.now().isoformat())
-        history.insert(0, entry)
-        history = history[:_MAX_ENTRIES]
-        _STORE_PATH.write_text(
-            json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        logger.info(f"💾 Score sauvegardé ({len(history)} entrées)")
-    except Exception as exc:
-        logger.error(f"Erreur sauvegarde score: {exc}")
-
-
-def load_scores(limit: int = 100) -> List[Dict]:
-    """Retourne l'historique des scores (plus récents en premier)."""
-    try:
-        _ensure_store()
-        data = json.loads(_STORE_PATH.read_text(encoding="utf-8"))
-        return data[:limit] if limit else data
-    except Exception as exc:
-        logger.error(f"Erreur lecture scores: {exc}")
         return []
+    data = json.loads(_STORE_PATH.read_text(encoding="utf-8"))
+    if not isinstance(data, list) or any(not isinstance(s, dict) for s in data):
+        raise ValueError("Historique scoring invalide")
+    return data
 
 
-def get_stats() -> Dict:
-    """Statistiques agrégées sur l'historique des scores."""
+def save_score(result):
+    """Return the persisted entry; failures propagate rather than claiming success."""
+    validate_result(result)
+    entry = {**result}
+    entry.setdefault("id", str(uuid4()))
+    entry.setdefault("generated_at", datetime.now(timezone.utc).isoformat())
+    with _locked():
+        history = [entry] + _read()
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=_STORE_PATH.parent,
+                                             delete=False) as handle:
+                temp_path = Path(handle.name)
+                json.dump(history[:_MAX_ENTRIES], handle, ensure_ascii=False, allow_nan=False)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp_path, _STORE_PATH)
+        finally:
+            if temp_path is not None and temp_path.exists():
+                temp_path.unlink()
+    return entry
+
+
+def load_scores(limit=100):
+    with _locked():
+        data = _read()
+    return data[:limit] if limit else data
+
+
+def get_stats():
     scores = load_scores(limit=0)
-    if not scores:
-        return {
-            "total": 0,
-            "avg_score": 0,
-            "by_recommendation": {"TRADE": 0, "WAIT": 0, "SKIP": 0},
-            "avg_score_by_grade": {},
-        }
-
-    total = len(scores)
-    avg = round(sum(s.get("score", 0) for s in scores) / total, 1)
-
+    valid = []
+    for score in scores:
+        try:
+            validate_result(score)
+            valid.append(score)
+        except RuntimeError:
+            pass
     by_rec = {"TRADE": 0, "WAIT": 0, "SKIP": 0}
-    for s in scores:
-        rec = s.get("recommendation", "WAIT")
-        by_rec[rec] = by_rec.get(rec, 0) + 1
-
-    by_grade: Dict[str, List[int]] = {}
-    for s in scores:
-        g = s.get("setup_grade", "?")
-        by_grade.setdefault(g, []).append(s.get("score", 0))
-    avg_by_grade = {g: round(sum(v) / len(v), 1) for g, v in by_grade.items()}
-
-    return {
-        "total": total,
-        "avg_score": avg,
-        "by_recommendation": by_rec,
-        "avg_score_by_grade": avg_by_grade,
-    }
+    by_grade = {}
+    for score in valid:
+        by_rec[score["recommendation"]] += 1
+        by_grade.setdefault(score.get("setup_grade", "?"), []).append(score["score"])
+    return {"total": len(valid), "invalid_entries": len(scores) - len(valid),
+            "avg_score": round(sum(s["score"] for s in valid) / len(valid), 1) if valid else 0,
+            "by_recommendation": by_rec,
+            "avg_score_by_grade": {g: round(sum(v) / len(v), 1) for g, v in by_grade.items()}}

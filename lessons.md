@@ -1,5 +1,12 @@
 # lessons.md — mémoire procédurale saasDrevmBot
 
+## L16 — Le scoring du dashboard reste local sans accord d'envoi externe
+
+- **Symptôme** : une intégration de fournisseur IA pourrait transmettre le contexte du setup alors que l'utilisateur refuse cet envoi.
+- **Cause racine** : confondre le souhait initial d'intégration et l'autorisation des données transmises.
+- **Fix** : la route scoring du dashboard principal utilise un barème local à la demande, avec critères détaillés et aucun appel OpenRouter/Anthropic. Les observations manuelles sont identifiées et ne deviennent pas des données marché vérifiées.
+- **Date** : 2026-09-30
+
 Leçons apprises sur CE projet : bugs récurrents, pièges connus, causes racines.
 Format : `L## — Titre / Symptôme / Cause racine / Fix / Date`
 
