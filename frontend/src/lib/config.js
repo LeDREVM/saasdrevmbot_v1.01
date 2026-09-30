@@ -49,6 +49,7 @@ export const API_ENDPOINTS = {
 	scoringHistory: `${API_URL}/api/scoring/history`,
 	scoringStats: `${API_URL}/api/scoring/stats`,
 	scoringAnalyze: `${API_URL}/api/scoring/analyze`,
+	scoringStatus: `${API_URL}/api/scoring/status`,
 	upcoming: `${API_URL}/api/alerts/upcoming`,
 	// Market data — proxy FastAPI vers Hyperliquid (voir backend/app/api/routes/market.py)
 	marketStatus: `${API_URL}/api/market/status`,

@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { API_ENDPOINTS, POLLING_CONFIG } from '$lib/config.js';
   import ScoreCard from './ScoreCard.svelte';
+  import { requestJSON } from '$lib/api-client.js';
 
   /** @type {any[]} */
   let scores = [];
@@ -19,54 +20,64 @@
     setup_grade: 'A',
     htf_phase: 'markup',
     direction: 'BUY',
-    session_active: true,
-    spread_ok: true
+    session_active: false,
+    spread_ok: false,
+    news_checked: false
   };
   let analyzing = false;
   let analyzeError = '';
+  /** @type {any} */ let status = null;
+  /** @type {any} */ let latest = null;
+  let updating = false;
+  let confluence = { wyckoff: '', confirmed: false, rsi_aligned: false,
+    price_above_kijun: 'unknown', m15_zone_touched: false, m5_confirmed: false };
+  /** @type {number | string | undefined} */ let newsMinutes = '';
 
   /** @type {ReturnType<typeof setInterval> | undefined} */
   let pollTimer;
 
   async function fetchHistory() {
-    const res = await fetch(`${API_ENDPOINTS.scoringHistory}?limit=50`);
-    if (!res.ok) throw new Error(`History ${res.status}`);
-    const data = await res.json();
+    const data = await requestJSON(`${API_ENDPOINTS.scoringHistory}?limit=50`);
     scores = data.scores || [];
   }
 
   async function fetchStats() {
-    const res = await fetch(API_ENDPOINTS.scoringStats);
-    if (res.ok) stats = await res.json();
+    stats = await requestJSON(API_ENDPOINTS.scoringStats);
   }
 
   async function loadAll() {
-    loading = true;
+    if (updating) return;
+    updating = true;
     error = '';
     try {
-      await Promise.all([fetchHistory(), fetchStats()]);
+      await Promise.all([fetchHistory(), fetchStats(),
+        requestJSON(API_ENDPOINTS.scoringStatus).then(data => { status = data; })]);
     } catch (e) {
       error = 'Impossible de charger les scores. Le backend est-il démarré ?';
       console.error(e);
     } finally {
       loading = false;
+      updating = false;
     }
   }
 
   async function runAnalysis() {
+    if (analyzing || !form.symbol.trim() || !status?.configured) return;
     analyzing = true;
     analyzeError = '';
     try {
       const url = API_ENDPOINTS.scoringAnalyze;
-      const res = await fetch(url, {
+      latest = await requestJSON(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, notify: false })
-      });
-      if (!res.ok) throw new Error(`Analyze ${res.status}`);
+        body: JSON.stringify({ ...form, symbol: form.symbol.trim().toUpperCase(), notify: false,
+          confluence: { ...confluence, wyckoff: confluence.wyckoff || null,
+            price_above_kijun: confluence.price_above_kijun === 'unknown' ? null : confluence.price_above_kijun === 'above' },
+          event_context: newsMinutes == null || newsMinutes === '' ? null : { event: 'Annonce renseignée', minutes_until: Number(newsMinutes) } })
+      }, 45000);
       await loadAll();
     } catch (e) {
-      analyzeError = "Échec de l'analyse (vérifier ANTHROPIC_API_KEY côté backend).";
+      analyzeError = e instanceof Error ? e.message : "L'analyse n'a pas abouti.";
       console.error(e);
     } finally {
       analyzing = false;
@@ -78,7 +89,7 @@
   onMount(() => {
     loadAll();
     if (POLLING_CONFIG.enabled) {
-      pollTimer = setInterval(fetchHistory, POLLING_CONFIG.interval);
+      pollTimer = setInterval(() => { if (!analyzing) loadAll(); }, POLLING_CONFIG.interval);
     }
   });
 
@@ -88,13 +99,13 @@
 </script>
 
 <svelte:head>
-  <title>Scoring IA — saasDrevmBot</title>
+  <title>Scoring local — saasDrevmBot</title>
 </svelte:head>
 
 <div class="page-header">
-  <h1 class="page-title">🤖 Scoring IA des Setups</h1>
+  <h1 class="page-title">Scoring local des setups</h1>
   <p class="page-description">
-    Analyse automatique des setups de trading par agent IA — score /100 et recommandation TRADE / WAIT / SKIP.
+    Barème transparent à la demande · aucun appel IA · horaires en Guadeloupe.
   </p>
 </div>
 
@@ -121,6 +132,10 @@
 {/if}
 
 <!-- Analyse manuelle -->
+<div class="provider-state" role="status">
+  {#if status?.configured}Scoring local prêt · aucun envoi externe
+  {:else}{status?.message || 'Vérification du service…'}{/if}
+</div>
 <div class="card">
   <div class="card-header">
     <h2 class="card-title">🎯 Analyser un setup</h2>
@@ -128,7 +143,7 @@
   <div class="analyze-form">
     <label>
       Symbole
-      <input bind:value={form.symbol} placeholder="US30" />
+      <input bind:value={form.symbol} placeholder="US30" maxlength="30" />
     </label>
     <label>
       Grade
@@ -163,14 +178,31 @@
       <input type="checkbox" bind:checked={form.spread_ok} />
       Spread OK
     </label>
-    <button class="btn btn-primary" on:click={runAnalysis} disabled={analyzing}>
+    <button class="btn btn-primary" on:click={runAnalysis} disabled={analyzing || !status?.configured || !form.symbol.trim()}>
       {analyzing ? '⏳ Analyse…' : '🚀 Lancer le scoring'}
     </button>
   </div>
+  <details class="confluence"><summary>Confluences H4 → M15 → M5</summary>
+    <div class="analyze-form">
+      <label>Wyckoff<select bind:value={confluence.wyckoff}><option value="">Non observé</option><option value="SPRING">Spring</option><option value="UTAD">UTAD</option></select></label>
+      <label class="checkbox"><input type="checkbox" bind:checked={confluence.confirmed} /> Sweep + réintégration + confirmation</label>
+      <label class="checkbox"><input type="checkbox" bind:checked={confluence.rsi_aligned} /> Divergence RSI alignée</label>
+      <label>Prix / Kijun<select bind:value={confluence.price_above_kijun}><option value="unknown">Non vérifié</option><option value="above">Au-dessus</option><option value="below">En dessous</option></select></label>
+      <label class="checkbox"><input type="checkbox" bind:checked={confluence.m15_zone_touched} /> Zone M15 touchée</label>
+      <label class="checkbox"><input type="checkbox" bind:checked={confluence.m5_confirmed} /> Trigger M5 confirmé</label>
+      <label class="checkbox"><input type="checkbox" bind:checked={form.news_checked} /> Calendrier vérifié</label>
+      <label>Annonce dans (minutes)<input type="number" min="0" max="10080" bind:value={newsMinutes} placeholder="Laisser vide si aucune" /></label>
+    </div>
+  </details>
+  <p class="context-note">Les critères viennent de tes observations. Le score mesure leur concordance, pas une probabilité de gain. Les anciens avis IA restent identifiés dans l'historique.</p>
   {#if analyzeError}
     <p class="form-error">{analyzeError}</p>
   {/if}
 </div>
+
+{#if latest}
+  <section aria-label="Résultat de la dernière demande" class="latest"><h2>Ton dernier score</h2><ScoreCard score={latest} /></section>
+{/if}
 
 <!-- Filtres -->
 <div class="filters">
@@ -201,13 +233,14 @@
   </div>
 {:else}
   <div class="grid grid-2 scores-grid">
-    {#each filtered as score (score.generated_at + score.symbol)}
+    {#each filtered as score}
       <ScoreCard {score} />
     {/each}
   </div>
 {/if}
 
 <style>
+  .provider-state{padding:12px 16px;margin-bottom:16px;border:1px solid var(--border);border-radius:var(--radius);color:var(--text-muted);font-size:13px}.confluence{margin-top:18px}.confluence summary{cursor:pointer;margin-bottom:16px}.context-note{font-size:12px;color:var(--text-muted);margin-top:10px}.latest{margin:20px 0}.latest h2{font-size:18px;margin-bottom:12px}
   .stats-row { margin-bottom: 24px; }
   .stat-box {
     background: var(--surface);
