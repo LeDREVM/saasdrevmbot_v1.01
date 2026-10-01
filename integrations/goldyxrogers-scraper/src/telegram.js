@@ -21,6 +21,12 @@ export function initBot(token, targetChatId) {
   chatId = targetChatId;
   bot = new TelegramBot(token, { polling: true });
 
+  // Toutes les commandes sont réservées au chat configuré.
+  const register = bot.onText.bind(bot);
+  bot.onText = (pattern, callback) => register(pattern, (msg, match) => {
+    if (String(msg.chat.id) === String(chatId)) callback(msg, match);
+  });
+
   // Restaure le mute depuis DB au démarrage
   const savedMute = getState('mute_until');
   if (savedMute && new Date(savedMute) > new Date()) {

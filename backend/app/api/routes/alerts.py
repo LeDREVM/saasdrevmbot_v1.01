@@ -8,6 +8,7 @@ from app.services.alerts.alert_predictor import AlertPredictor
 from app.services.alerts.notification_manager import NotificationManager
 from app.services.alerts.markdown_exporter import MarkdownExporter
 from app.services.economic_calendar.calendar_aggregator import CalendarAggregator
+from app.core.alert_auth import require_notification_admin
 from app.core.config import settings
 from app.core.database import get_db
 
@@ -49,7 +50,7 @@ async def get_upcoming_alerts(
         "predictions": predictions
     })
 
-@router.post("/test-notification")
+@router.post("/test-notification", dependencies=[Depends(require_notification_admin)])
 async def test_notification(
     channels: str = Query("discord", description="discord,telegram"),
     db: Session = Depends(get_db)
@@ -186,7 +187,7 @@ async def export_weekly_markdown(
         filename=f"weekly_{symbol}_{datetime.now().strftime('%Y-W%W')}.md"
     )
 
-@router.post("/manual-alert")
+@router.post("/manual-alert", dependencies=[Depends(require_notification_admin)])
 async def send_manual_alert(
     event_name: str = Query(..., description="Nom de l'événement"),
     symbol: str = Query("EURUSD"),

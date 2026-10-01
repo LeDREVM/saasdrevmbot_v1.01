@@ -1,5 +1,7 @@
 <script>
   import { onMount } from 'svelte';
+  import { requestJSON } from '$lib/api-client.js';
+  let loadError = '';
   
   export let symbols = ['EURUSD'];
   
@@ -13,11 +15,11 @@
   async function fetchUpcomingEvents() {
     loading = true;
     try {
-      const response = await fetch(`${API_URL}/calendar/today`);
-      const data = await response.json();
-      events = data.events || [];
+      const data = await requestJSON(`${API_URL}/calendar/today`);
+      if (!Array.isArray(data.events)) throw new Error('Réponse calendrier invalide');
+      events = data.events;
     } catch (error) {
-      console.error('Erreur chargement événements:', error);
+      loadError = error.message;
       events = [];
     } finally {
       loading = false;
@@ -40,7 +42,8 @@
 </script>
 
 <div class="upcoming-events">
-  {#if loading}
+  {#if loadError}<p role="alert">Calendrier indisponible : {loadError}</p>
+  {:else if loading}
     <div class="loading">
       <div class="spinner"></div>
       <p>Chargement des événements...</p>

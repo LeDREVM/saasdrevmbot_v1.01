@@ -7,11 +7,12 @@
   let testStatus = '';
   let testing = false;
   
+  import { authRequest } from '$lib/auth-request.js';
   import { API_URL as API_BASE } from '$lib/config.js';
   const API_URL = `${API_BASE}/api`;
   
   async function testDiscord() {
-    if (!settings?.notifications?.discord_enabled) {
+    if (!settings?.channels?.discord) {
       testStatus = '❌ Discord non activé dans la configuration';
       return;
     }
@@ -20,15 +21,15 @@
     testStatus = '⏳ Envoi du test Discord...';
     
     try {
-      const response = await fetch(`${API_URL}/alert-config/test-notification/${userId}`, {
+      const response = await authRequest(`${API_URL}/alert-config/test-alert/${userId}?channel=discord`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ channel: 'discord' })
       });
       
-      const data = await response.json();
+      const data = response;
       
-      if (response.ok) {
+      if (response.status === "sent") {
         testStatus = '✅ Test Discord envoyé avec succès !';
       } else {
         testStatus = `❌ Erreur: ${data.detail || 'Échec envoi'}`;
@@ -42,7 +43,7 @@
   }
 
   async function testTelegram() {
-    if (!settings?.notifications?.telegram_enabled) {
+    if (!settings?.channels?.telegram) {
       testStatus = '❌ Telegram non activé dans la configuration';
       return;
     }
@@ -51,15 +52,15 @@
     testStatus = '⏳ Envoi du test Telegram...';
     
     try {
-      const response = await fetch(`${API_URL}/alert-config/test-notification/${userId}`, {
+      const response = await authRequest(`${API_URL}/alert-config/test-alert/${userId}?channel=telegram`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ channel: 'telegram' })
       });
       
-      const data = await response.json();
+      const data = response;
       
-      if (response.ok) {
+      if (response.status === "sent") {
         testStatus = '✅ Test Telegram envoyé avec succès !';
       } else {
         testStatus = `❌ Erreur: ${data.detail || 'Échec envoi'}`;
@@ -77,7 +78,7 @@
   <div class="test-buttons">
     <button 
       on:click={testDiscord} 
-      disabled={testing || !settings?.notifications?.discord_enabled}
+      disabled={testing || !settings?.channels?.discord}
       class="test-btn discord">
       <span class="btn-icon">💬</span>
       <span>Test Discord</span>
@@ -85,7 +86,7 @@
     
     <button 
       on:click={testTelegram} 
-      disabled={testing || !settings?.notifications?.telegram_enabled}
+      disabled={testing || !settings?.channels?.telegram}
       class="test-btn telegram">
       <span class="btn-icon">✈️</span>
       <span>Test Telegram</span>
@@ -102,14 +103,14 @@
     <p>💡 <strong>Astuce:</strong> Configure tes webhooks dans la section Configuration avant de tester.</p>
     
     <div class="channel-status">
-      <div class="channel-item" class:enabled={settings?.notifications?.discord_enabled}>
+      <div class="channel-item" class:enabled={settings?.channels?.discord}>
         <span class="status-dot"></span>
-        <span>Discord: {settings?.notifications?.discord_enabled ? 'Activé' : 'Désactivé'}</span>
+        <span>Discord: {settings?.channels?.discord ? 'Activé' : 'Désactivé'}</span>
       </div>
       
-      <div class="channel-item" class:enabled={settings?.notifications?.telegram_enabled}>
+      <div class="channel-item" class:enabled={settings?.channels?.telegram}>
         <span class="status-dot"></span>
-        <span>Telegram: {settings?.notifications?.telegram_enabled ? 'Activé' : 'Désactivé'}</span>
+        <span>Telegram: {settings?.channels?.telegram ? 'Activé' : 'Désactivé'}</span>
       </div>
     </div>
   </div>

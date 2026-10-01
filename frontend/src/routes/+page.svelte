@@ -70,6 +70,10 @@
   </div>
   <div class="refresh"><p class="muted" role="status">{error || `Actualisé ${guadeloupeTime(updated)} · scoring local à la demande`}</p><button on:click={refresh} disabled={refreshing}>{refreshing ? 'Actualisation…' : 'Actualiser'}</button></div>
   <section class="workspace" aria-label="Marchés et calendrier"><TradingViewPanel /><TradingEconomicsWidget /></section>
+  <section class="bottom" aria-label="Espace de trading">
+    <article><p class="eyebrow">JOURNAL PERSONNEL</p><h2>Suivre tes décisions</h2><p class="muted">Trades H4 / M15 / M5, résultats en R et export CSV.</p><nav><a href="/journal">Ouvrir le journal</a></nav></article>
+    <article><p class="eyebrow">ALERTES PERSONNELLES</p><h2>Préparer la session NY</h2><p class="muted">Calendrier économique et préférences réservées à ton compte.</p><nav><a href="/alerts">Mes alertes</a><a href="/calendar">Voir le calendrier</a></nav></article>
+  </section>
   <section class="bottom">
     <article class="checklist"><p class="eyebrow">AVANT LA DÉCISION</p><h2>Trois confirmations</h2><ol><li>Biais et structure H4</li><li>Zone M15 et liquidité</li><li>Sweep, réintégration et confirmation M5</li></ol><p class="muted">Le scoring local repose sur le contexte que tu renseignes.</p></article>
     <article><p class="eyebrow">SERVICES</p><dl><div><dt>Backend</dt><dd>{backend}</dd></div><div><dt>Scoring</dt><dd>{ai}</dd></div><div><dt>Synchronisation</dt><dd>{sync}</dd></div></dl><nav><a href="/calendar">Calendrier</a><a href="/scoring">Historique des scores</a><a href="/alerts">Alertes</a></nav></article>
