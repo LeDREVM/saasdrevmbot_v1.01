@@ -1,5 +1,9 @@
 <script>
   import { onMount } from 'svelte';
+  import { guadeloupeTime } from '$lib/api-client.js';
+  import { TIMEFRAMES, guadeloupeDate, alertInstant, tradePayload, tradesCSV } from '$lib/journal.js';
+  let editingId = null;
+  let saving = false;
   import { supabase, supabaseEnabled, SCREENSHOT_BUCKET } from '$lib/supabase';
 
   // Réf castée : les appels sont gardés par supabaseEnabled/session.
@@ -22,24 +26,29 @@
     drawdown_lock_pct: 4, drawdown_locked: false, risk_per_trade_pct: 1
   };
 
-  const today = () => new Date().toISOString().slice(0, 10);
+  const today = guadeloupeDate;
   let nt = blankTrade();
   /** @type {any} */ let ntFile = null;
   let ns = { session_date: today(), bias: '', news: '', comment: '' };
   let na = { event: '', impact: 'medium', alert_time: '', currency: '', note: '' };
 
   function blankTrade() {
-    return { symbol: 'XAUUSD', direction: 'buy', entry: '', sl: '', tp: '',
+    return { timeframe: 'M5', trade_date: today(), symbol: 'XAUUSD', direction: 'buy', entry: '', sl: '', tp: '',
              result: 'running', r_multiple: '', notes: '' };
   }
   const num = (/** @type {any} */ v) => (v === '' || v === null || v === undefined ? null : Number(v));
 
-  onMount(async () => {
+  onMount(() => {
     if (!supabaseEnabled) return;
-    const { data } = await sb.auth.getSession();
-    session = data.session;
-    sb.auth.onAuthStateChange((/** @type {any} */ _e, /** @type {any} */ s) => { session = s; if (s) loadAll(); });
-    if (session) loadAll();
+    let disposed = false;
+    const { data: listener } = sb.auth.onAuthStateChange((_e, current) => {
+      session = current;
+      trades = []; sessions = []; alerts = []; rules = null; stats = null;
+      editingId = null; nt = blankTrade(); ntFile = null;
+      if (current) loadAll();
+    });
+    sb.auth.getSession().then(({ data }) => { if (!disposed) { session = data.session; if (session) loadAll(); } });
+    return () => { disposed = true; listener.subscription.unsubscribe(); };
   });
 
   async function signIn() {
@@ -59,49 +68,80 @@
     await Promise.all([loadStats(), loadTrades(), loadSessions(), loadRules(), loadAlerts()]);
   }
   async function loadStats() {
-    const { data } = await sb.from('journal_stats').select('*').maybeSingle();
+    const owner = session?.user?.id;
+    if (!owner) return;
+    const { data, error } = await sb.from('journal_stats').select('*').eq('user_id', owner).maybeSingle();
+    if (error) err = error.message;
+    if (session?.user?.id !== owner) return;
     stats = data;
   }
   async function loadTrades() {
-    const { data, error } = await sb.from('journal_trades').select('*')
+    const owner = session?.user?.id;
+    if (!owner) return;
+    const { data, error } = await sb.from('journal_trades').select('*').eq('user_id', owner)
       .order('trade_date', { ascending: false }).limit(200);
+    if (session?.user?.id !== owner) return;
     if (error) err = error.message;
     trades = data || [];
   }
   async function loadSessions() {
-    const { data } = await sb.from('journal_sessions').select('*')
+    const owner = session?.user?.id;
+    if (!owner) return;
+    const { data } = await sb.from('journal_sessions').select('*').eq('user_id', owner)
       .order('session_date', { ascending: false }).limit(100);
+    if (session?.user?.id !== owner) return;
     sessions = data || [];
   }
   async function loadRules() {
-    const { data } = await sb.from('journal_rules').select('*').maybeSingle();
+    const owner = session?.user?.id;
+    if (!owner) return;
+    const { data } = await sb.from('journal_rules').select('*').eq('user_id', owner).maybeSingle();
+    if (session?.user?.id !== owner) return;
     rules = data || { ...RULES_DEFAULT };
   }
   async function loadAlerts() {
-    const { data } = await sb.from('journal_alerts').select('*')
+    const owner = session?.user?.id;
+    if (!owner) return;
+    const { data } = await sb.from('journal_alerts').select('*').eq('user_id', owner)
       .order('alert_time', { ascending: false }).limit(100);
+    if (session?.user?.id !== owner) return;
     alerts = data || [];
   }
 
   async function addTrade() {
     err = '';
+    if (!session || saving) return;
+    let validated;
+    try { validated = tradePayload(nt); } catch (error) { err = error.message; return; }
+    saving = true;
+    try {
     const uid = session.user.id;
-    /** @type {string[]} */ let screenshots = [];
+    /** @type {string[]} */ let screenshots = nt.screenshots || [];
     if (ntFile) {
       const path = `${uid}/${crypto.randomUUID()}-${ntFile.name}`;
       const { error: upErr } = await sb.storage.from(SCREENSHOT_BUCKET).upload(path, ntFile);
       if (upErr) { err = 'Upload : ' + upErr.message; return; }
       screenshots = [path];
     }
-    const row = {
-      user_id: uid, symbol: nt.symbol, direction: nt.direction,
-      entry: num(nt.entry), sl: num(nt.sl), tp: num(nt.tp),
-      result: nt.result, r_multiple: num(nt.r_multiple), notes: nt.notes, screenshots
-    };
-    const { error } = await sb.from('journal_trades').insert(row);
+    const row = { ...validated, user_id: uid, screenshots };
+    const query = editingId
+      ? sb.from('journal_trades').update(row).eq('id', editingId).eq('user_id', uid)
+      : sb.from('journal_trades').insert(row);
+    const { error } = await query;
     if (error) { err = error.message; return; }
+    editingId = null;
     nt = blankTrade(); ntFile = null;
     await Promise.all([loadTrades(), loadStats()]);
+    } catch (error) { err = error.message; } finally { saving = false; }
+  }
+  function editTrade(trade) {
+    editingId = trade.id;
+    nt = { ...blankTrade(), ...trade, timeframe: trade.timeframe || '' };
+  }
+  function exportTrades() {
+    const url = URL.createObjectURL(new Blob([tradesCSV(trades)], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a'); link.href = url; link.download = `journal-${today()}.csv`; link.click();
+    URL.revokeObjectURL(url);
   }
 
   async function addSession() {
@@ -112,13 +152,16 @@
     loadSessions();
   }
   async function addAlert() {
+    err = "";
+    try {
     const { error } = await sb.from('journal_alerts').insert({
       user_id: session.user.id, event: na.event, impact: na.impact,
-      alert_time: na.alert_time, currency: na.currency, note: na.note
+      alert_time: alertInstant(na.alert_time), currency: na.currency, note: na.note
     });
     if (error) { err = error.message; return; }
     na = { event: '', impact: 'medium', alert_time: '', currency: '', note: '' };
     loadAlerts();
+    } catch (error) { err = error.message; }
   }
   async function saveRules() {
     const { error } = await sb.from('journal_rules').upsert({
@@ -180,8 +223,10 @@
 
     {#if tab === 'trades'}
       <section class="card">
-        <h2>Nouveau trade</h2>
+        <h2>{editingId ? "Modifier le trade" : "Nouveau trade"}</h2>
         <div class="grid">
+          <label>Date Guadeloupe <input type="date" bind:value={nt.trade_date} /></label>
+          <label>Timeframe <select bind:value={nt.timeframe}><option value="" disabled>Choisir</option>{#each TIMEFRAMES as tf}<option value={tf}>{tf}</option>{/each}</select></label>
           <label>Symbole <input bind:value={nt.symbol} /></label>
           <label>Sens
             <select bind:value={nt.direction}><option value="buy">BUY</option><option value="sell">SELL</option></select>
@@ -199,26 +244,27 @@
           <label>Capture <input type="file" accept="image/*" on:change={(e) => (ntFile = (/** @type {HTMLInputElement} */ (e.currentTarget)).files?.[0])} /></label>
           <label class="wide">Notes <input bind:value={nt.notes} /></label>
         </div>
-        <button class="btn" on:click={addTrade}>Ajouter</button>
+        <button class="btn" disabled={saving} on:click={addTrade}>{saving ? 'Enregistrement…' : editingId ? 'Enregistrer' : 'Ajouter'}</button>
+        {#if editingId}<button class="btn ghost" on:click={() => { editingId = null; nt = blankTrade(); ntFile = null; }}>Annuler</button>{/if}
       </section>
 
       <section class="card">
-        <h2>Trades ({trades.length})</h2>
+        <h2>Trades ({trades.length})</h2><button class="btn ghost" disabled={!trades.length} on:click={exportTrades}>Exporter les trades affichés (CSV)</button>
         <div class="tblwrap">
           <table>
-            <thead><tr><th>Date</th><th>Symbole</th><th>Sens</th><th>Entrée</th><th>SL</th><th>TP</th><th>Résultat</th><th>R</th><th>📷</th></tr></thead>
+            <thead><tr><th>Date</th><th>Symbole</th><th>Timeframe</th><th>Sens</th><th>Entrée</th><th>SL</th><th>TP</th><th>Résultat</th><th>R</th><th>📷</th><th>Action</th></tr></thead>
             <tbody>
               {#each trades as t}
                 <tr>
-                  <td>{t.trade_date}</td><td>{t.symbol}</td>
+                  <td>{t.trade_date}</td><td>{t.symbol}</td><td>{t.timeframe ?? "Non renseigné"}</td>
                   <td class:pos={t.direction === 'buy'} class:neg={t.direction === 'sell'}>{t.direction}</td>
                   <td>{t.entry ?? ''}</td><td>{t.sl ?? ''}</td><td>{t.tp ?? ''}</td>
                   <td>{t.result}</td>
                   <td class:pos={(t.r_multiple ?? 0) > 0} class:neg={(t.r_multiple ?? 0) < 0}>{t.r_multiple ?? ''}</td>
-                  <td>{#if t.screenshots?.length}<button class="mini" on:click={() => openShot(t.screenshots[0])}>voir</button>{/if}</td>
+                  <td>{#if t.screenshots?.length}<button class="mini" on:click={() => openShot(t.screenshots[0])}>voir</button>{/if}</td><td><button class="mini" on:click={() => editTrade(t)}>Modifier</button></td>
                 </tr>
               {:else}
-                <tr><td colspan="9" class="empty">Aucun trade</td></tr>
+                <tr><td colspan="11" class="empty">Aucun trade</td></tr>
               {/each}
             </tbody>
           </table>
@@ -271,7 +317,7 @@
           <label>Impact
             <select bind:value={na.impact}><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select>
           </label>
-          <label>Heure <input type="datetime-local" bind:value={na.alert_time} /></label>
+          <label>Heure Guadeloupe <input type="datetime-local" bind:value={na.alert_time} /></label>
           <label>Devise <input bind:value={na.currency} placeholder="USD" /></label>
           <label class="wide">Note <input bind:value={na.note} /></label>
         </div>
@@ -283,7 +329,7 @@
           <thead><tr><th>Heure</th><th>Événement</th><th>Impact</th><th>Devise</th><th>Note</th></tr></thead>
           <tbody>
             {#each alerts as a}
-              <tr><td>{a.alert_time}</td><td>{a.event}</td>
+              <tr><td>{guadeloupeTime(a.alert_time)}</td><td>{a.event}</td>
                 <td class:high={a.impact === 'high'}>{a.impact}</td><td>{a.currency ?? ''}</td><td>{a.note ?? ''}</td></tr>
             {:else}<tr><td colspan="5" class="empty">Aucune alerte</td></tr>{/each}
           </tbody>

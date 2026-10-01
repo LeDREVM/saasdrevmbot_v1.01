@@ -28,3 +28,10 @@ backend/data/scoring_history.json
 # Rapports prep session NY (générés à chaque passe par scripts/ny_morning_prep.py)
 data/ny_reports/*
 !data/ny_reports/.gitkeep
+
+# Local verification dependencies and temporary helpers
+.verification-deps/
+.npm-cache/
+frontend/.build-local.mjs
+frontend/.preview-local.mjs
+backend/_preview_app.py

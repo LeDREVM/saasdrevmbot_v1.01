@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     # API
     API_V1_STR: str = "/api"
     PROJECT_NAME: str = "SaaS DrevmBot"
+    SUPABASE_URL: Optional[str] = None
+    SUPABASE_ANON_KEY: Optional[str] = None
     BACKEND_CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
     
     # Database

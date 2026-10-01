@@ -4,6 +4,8 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 import logging
 
+from app.models.alert_settings import UserAlertSettings
+from app.services.alerts.user_delivery import accepts, deliver
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.services.alerts.alert_predictor import AlertPredictor
@@ -56,87 +58,19 @@ def check_upcoming_alerts():
     db = SessionLocal()
     
     try:
-        # Récupérer événements des 2 prochaines heures
-        upcoming = calendar_aggregator.get_upcoming_high_impact(hours_ahead=2)
-        
-        if not upcoming:
-            logger.info("Aucun événement imminent")
-            return
-        
-        logger.info(f"📊 {len(upcoming)} événements high impact détectés")
-        
-        # Symboles à analyser
-        symbols = ['EURUSD', 'GBPUSD', 'USDJPY', 'XAUUSD', 'SPX']
-        
-        for event in upcoming:
-            for symbol in symbols:
-                # Prédire impact
-                prediction = predictor.predict_upcoming_impact(event, symbol, db)
-                
-                if prediction and prediction['prediction']['risk_level'] in ['extreme', 'high']:
-                    channels = []
-                    if settings.DISCORD_WEBHOOK_URL:
-                        channels.append('discord')
-                    if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_CHAT_ID:
-                        channels.append('telegram')
+        users = db.query(UserAlertSettings).all()
+        for user in users:
+            try:
+                upcoming = calendar_aggregator.get_upcoming_high_impact(hours_ahead=user.advance_notice_hours)
+                for event in upcoming:
+                    for symbol in user.watched_symbols or []:
+                        prediction = predictor.predict_upcoming_impact(event, symbol, db)
+                        if prediction and accepts(user, prediction):
+                            deliver(db, user, prediction)
+            except Exception:
+                db.rollback()
+                logger.exception("Échec des alertes pour un utilisateur")
 
-                    if not channels:
-                        logger.warning("Aucun canal de notification configuré")
-                        continue
-
-                    claimed = []
-                    for channel in channels:
-                        claim_key = claim_alert(
-                            db,
-                            prediction['event'],
-                            symbol,
-                            alert_type='predictive',
-                            channel=channel,
-                        )
-                        if claim_key:
-                            claimed.append((channel, claim_key))
-
-                    if not claimed:
-                        logger.info(
-                            "⏭️ Alerte déjà envoyée: %s (%s)",
-                            event.event,
-                            symbol,
-                        )
-                        continue
-
-                    requested_channels = [channel for channel, _ in claimed]
-                    try:
-                        results = notifier.send_predictive_alert(
-                            prediction,
-                            channels=requested_channels,
-                        )
-                    except Exception:
-                        for _, claim_key in claimed:
-                            release_alert(db, claim_key)
-                        raise
-
-                    for channel, claim_key in claimed:
-                        if not results.get(channel, False):
-                            release_alert(db, claim_key)
-
-                    successful_channels = [
-                        channel for channel, _ in claimed
-                        if results.get(channel, False)
-                    ]
-                    if successful_channels:
-                        logger.info(
-                            "✅ Alerte envoyée (%s): %s (%s)",
-                            ','.join(successful_channels),
-                            event.event,
-                            symbol,
-                        )
-                    else:
-                        logger.warning(
-                            "⚠️ Échec d'envoi: %s (%s)",
-                            event.event,
-                            symbol,
-                        )
-        
     except Exception as e:
         logger.error(f"Erreur check_upcoming_alerts: {e}")
     finally:

@@ -1,4 +1,5 @@
 <script>
+  import { guadeloupeTime } from '$lib/api-client.js';
   /** @type {any[]} */
   export let history = [];
   /** @type {any} */
@@ -6,7 +7,7 @@
 
   /** @param {any} dateString */
   function formatDate(dateString) {
-    return new Date(dateString).toLocaleString('fr-FR');
+    return guadeloupeTime(dateString);
   }
 
   /** @param {any} risk */
@@ -34,17 +35,17 @@
         </div>
         
         <div class="stat-card">
-          <span class="stat-value">{stats.summary?.accuracy_rate || 0}%</span>
+          <span class="stat-value">{stats.summary?.accuracy_rate ?? '—'}%</span>
           <span class="stat-label">Taux de précision</span>
         </div>
         
         <div class="stat-card">
-          <span class="stat-value">{stats.summary?.avg_movement || 0}</span>
+          <span class="stat-value">{stats.summary?.avg_actual_pips ?? '—'}</span>
           <span class="stat-label">Mouvement moyen (pips)</span>
         </div>
         
         <div class="stat-card">
-          <span class="stat-value">{stats.summary?.extreme_alerts || 0}</span>
+          <span class="stat-value">{stats.by_risk_level?.extreme?.total ?? '—'}</span>
           <span class="stat-label">Alertes EXTRÊMES</span>
         </div>
       </div>
@@ -66,35 +67,35 @@
           <div class="history-item">
             <div class="item-header">
               <div class="item-title">
-                <span class="currency-badge">{alert.symbol}</span>
-                <h4>{alert.event_name}</h4>
+                <span class="currency-badge">{alert.event?.symbol}</span>
+                <h4>{alert.event?.name}</h4>
               </div>
-              <span class="risk-badge" style="background-color: {getRiskColor(alert.risk_level)}">
-                {alert.risk_level?.toUpperCase()}
+              <span class="risk-badge" style="background-color: {getRiskColor(alert.prediction?.risk_level)}">
+                {alert.prediction?.risk_level?.toUpperCase()}
               </span>
             </div>
             
             <div class="item-details">
               <div class="detail-row">
                 <span class="label">📅 Date:</span>
-                <span class="value">{formatDate(alert.event_date)}</span>
+                <span class="value">{alert.event?.date}</span>
               </div>
               
               <div class="detail-row">
                 <span class="label">📊 Mouvement prévu:</span>
-                <span class="value">{alert.predicted_movement || 'N/A'} pips</span>
+                <span class="value">{alert.prediction?.pips || 'N/A'} pips</span>
               </div>
               
-              {#if alert.actual_movement}
+              {#if alert.actual?.pips != null}
                 <div class="detail-row">
                   <span class="label">✅ Mouvement réel:</span>
-                  <span class="value">{alert.actual_movement} pips</span>
+                  <span class="value">{alert.actual?.pips} pips</span>
                 </div>
               {/if}
               
               <div class="detail-row">
                 <span class="label">🎯 Confiance:</span>
-                <span class="value">{alert.confidence || 'N/A'}</span>
+                <span class="value">{alert.prediction?.confidence || 'N/A'}</span>
               </div>
               
               <div class="detail-row">

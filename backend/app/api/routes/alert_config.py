@@ -2,14 +2,15 @@ import os
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
+from app.core.alert_auth import require_alert_owner
 from app.core.database import get_db
 from app.models.alert_settings import UserAlertSettings, AlertLog
 
-router = APIRouter(prefix="/alert-config", tags=["Alert Configuration"])
+router = APIRouter(prefix="/alert-config", tags=["Alert Configuration"], dependencies=[Depends(require_alert_owner)])
 
 # === SCHEMAS PYDANTIC ===
 
@@ -41,12 +42,53 @@ class AlertSettingsUpdate(BaseModel):
     custom_discord_webhook: Optional[str] = None
     custom_telegram_token: Optional[str] = None
     custom_telegram_chat_id: Optional[str] = None
-    quiet_hours_start: Optional[int] = None
-    quiet_hours_end: Optional[int] = None
+    quiet_hours_start: Optional[int] = Field(default=None, ge=0, le=23)
+    quiet_hours_end: Optional[int] = Field(default=None, ge=0, le=23)
     quiet_hours_enabled: Optional[bool] = None
-    advance_notice_hours: Optional[int] = None
-    min_expected_pips: Optional[float] = None
+    advance_notice_hours: Optional[int] = Field(default=None, ge=1, le=24)
+    min_expected_pips: Optional[float] = Field(default=None, ge=0, allow_inf_nan=False)
     require_high_confidence: Optional[bool] = None
+
+    @field_validator('watched_symbols')
+    @classmethod
+    def valid_symbols(cls, value):
+        import re
+        if value is None or len(value) > 30 or any(not re.fullmatch(r'[A-Z0-9]{2,12}', symbol) for symbol in value):
+            raise ValueError('Symboles invalides')
+        return list(dict.fromkeys(value))
+
+    @field_validator('quiet_hours_start', 'quiet_hours_end', 'advance_notice_hours', 'min_expected_pips')
+    @classmethod
+    def required_number(cls, value):
+        if value is None:
+            raise ValueError('Nombre requis')
+        return value
+
+    @field_validator('custom_telegram_token')
+    @classmethod
+    def valid_token(cls, value):
+        import re
+        if value and not re.fullmatch(r'[0-9]+:[A-Za-z0-9_-]+', value):
+            raise ValueError('Clé Telegram invalide')
+        return value
+
+    @field_validator('custom_telegram_chat_id')
+    @classmethod
+    def valid_chat(cls, value):
+        import re
+        if value and not re.fullmatch(r'-?[0-9]+', value):
+            raise ValueError('Chat Telegram invalide')
+        return value
+
+    @field_validator('custom_discord_webhook')
+    @classmethod
+    def safe_webhook(cls, value):
+        from urllib.parse import urlparse
+        if value:
+            url = urlparse(value)
+            if url.scheme != 'https' or url.hostname != 'discord.com' or not url.path.startswith('/api/webhooks/') or url.username or url.password or url.port not in (None, 443):
+                raise ValueError('Webhook Discord invalide')
+        return value
 
 # === ENDPOINTS ===
 
@@ -83,8 +125,10 @@ async def get_user_settings(
             "telegram": settings.telegram_enabled
         },
         "custom_webhooks": {
-            "discord": settings.custom_discord_webhook,
-            "telegram_token": settings.custom_telegram_token,
+            "discord": None,
+            "discord_configured": bool(settings.custom_discord_webhook),
+            "telegram_token": None,
+            "telegram_configured": bool(settings.custom_telegram_token),
             "telegram_chat_id": settings.custom_telegram_chat_id
         },
         "quiet_hours": {
@@ -168,8 +212,8 @@ async def get_alert_history(
                     "pips": log.actual_pips,
                     "direction": log.actual_direction,
                     "accurate": log.prediction_accurate
-                } if log.actual_pips else None,
-                "sent_at": log.sent_at.isoformat(),
+                } if log.actual_pips is not None else None,
+                "sent_at": log.sent_at.replace(tzinfo=timezone.utc).isoformat() if log.sent_at.tzinfo is None else log.sent_at.isoformat(),
                 "channels": log.channels_sent,
                 "status": log.delivery_status
             }
@@ -209,10 +253,10 @@ async def get_alert_stats(
         avg_actual_pips = sum(log.actual_pips for log in verified_logs) / len(verified_logs)
         prediction_error = abs(avg_predicted_pips - avg_actual_pips)
     else:
-        accuracy_rate = 0
-        avg_predicted_pips = 0
-        avg_actual_pips = 0
-        prediction_error = 0
+        accuracy_rate = None
+        avg_predicted_pips = None
+        avg_actual_pips = None
+        prediction_error = None
     
     # Par niveau de risque
     by_risk = {}
@@ -234,10 +278,10 @@ async def get_alert_stats(
         "summary": {
             "total_alerts_sent": total_alerts,
             "verified_predictions": len(verified_logs),
-            "accuracy_rate": round(accuracy_rate, 1),
-            "avg_predicted_pips": round(avg_predicted_pips, 1),
-            "avg_actual_pips": round(avg_actual_pips, 1),
-            "prediction_error": round(prediction_error, 1)
+            "accuracy_rate": round(accuracy_rate, 1) if accuracy_rate is not None else None,
+            "avg_predicted_pips": round(avg_predicted_pips, 1) if avg_predicted_pips is not None else None,
+            "avg_actual_pips": round(avg_actual_pips, 1) if avg_actual_pips is not None else None,
+            "prediction_error": round(prediction_error, 1) if prediction_error is not None else None
         },
         "by_risk_level": by_risk,
         "by_channel": {
@@ -263,6 +307,8 @@ async def send_test_alert(
     if not settings:
         raise HTTPException(status_code=404, detail="User settings not found")
     
+    if channel not in ("discord", "telegram"):
+        raise HTTPException(400, "Canal invalide")
     # Vérifier que le canal est activé
     if channel == "discord" and not settings.discord_enabled:
         raise HTTPException(status_code=400, detail="Discord notifications disabled")
@@ -272,9 +318,9 @@ async def send_test_alert(
     # Créer une prédiction de test
     from app.services.alerts.notification_manager import NotificationManager
     
-    webhook = settings.custom_discord_webhook or os.getenv('DISCORD_WEBHOOK')
-    tg_token = settings.custom_telegram_token or os.getenv('TELEGRAM_TOKEN')
-    tg_chat = settings.custom_telegram_chat_id or os.getenv('TELEGRAM_CHAT_ID')
+    webhook = settings.custom_discord_webhook
+    tg_token = settings.custom_telegram_token
+    tg_chat = settings.custom_telegram_chat_id
     
     notifier = NotificationManager(webhook, tg_token, tg_chat)
     
@@ -302,7 +348,9 @@ async def send_test_alert(
     }
     
     try:
-        notifier.send_predictive_alert(test_prediction, channels=[channel])
+        result = notifier.send_predictive_alert(test_prediction, channels=[channel])
+        if not result.get(channel):
+            raise HTTPException(502, "Notification non délivrée")
         
         return JSONResponse(content={
             "status": "sent",
@@ -310,8 +358,10 @@ async def send_test_alert(
             "channel": channel,
             "message": "Test alert sent successfully"
         })
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to send test: {str(e)}")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=502, detail="Notification indisponible")
 
 @router.get("/active-alerts/{user_id}")
 async def get_active_alerts(

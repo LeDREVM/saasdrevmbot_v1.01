@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { normalizeCandles } from './candle-validation.js';
 import { config } from './config.js';
 
 const BASE_URL = config.urls.twelveDataBase;
@@ -22,24 +23,17 @@ export function initPrice(key) {
 export async function getCandles(instrument, interval = '5min', count = 10) {
   if (!apiKey) throw new Error('TWELVEDATA_API_KEY manquant dans .env');
 
+  interval = ({ H4: '4h', M15: '15min', M5: '5min' })[interval] || interval;
+  if (!['1min', '5min', '15min', '1h', '4h'].includes(interval) || !Number.isInteger(count) || count < 1 || count > 5000) throw new Error('Timeframe ou nombre de bougies invalide.');
   const symbol = SYMBOL_MAP[instrument];
   if (!symbol) throw new Error(`Instrument inconnu: ${instrument}`);
 
   const { data } = await axios.get(`${BASE_URL}/time_series`, {
-    params: { symbol, interval, outputsize: count, apikey: apiKey },
+    params: { symbol, interval, outputsize: count, timezone: 'UTC', apikey: apiKey },
     timeout: 10000,
   });
 
-  if (data.status === 'error') throw new Error(`Twelve Data: ${data.message}`);
-
-  return (data.values || []).map(c => ({
-    datetime: new Date(c.datetime + 'Z'),
-    open:   parseFloat(c.open),
-    high:   parseFloat(c.high),
-    low:    parseFloat(c.low),
-    close:  parseFloat(c.close),
-    volume: parseFloat(c.volume || 0),
-  })).reverse(); // ordre chronologique
+  return normalizeCandles(data);
 }
 
 /**
@@ -57,7 +51,9 @@ export async function getPrice(instrument) {
   });
 
   if (data.status === 'error') throw new Error(`Twelve Data: ${data.message}`);
-  return parseFloat(data.price);
+  const price = Number(data?.price);
+  if (!Number.isFinite(price) || price <= 0) throw new Error('Twelve Data : prix invalide.');
+  return price;
 }
 
 /**
@@ -84,7 +80,8 @@ export async function getAllPrices() {
 
     const result = {};
     for (const [inst, sym] of Object.entries(SYMBOL_MAP)) {
-      if (data[sym]) result[inst] = parseFloat(data[sym].price);
+      const price = Number(data?.[sym]?.price);
+      if (Number.isFinite(price) && price > 0) result[inst] = price;
     }
     return result;
   } catch {

@@ -1,5 +1,7 @@
 <script>
   import { onMount } from 'svelte';
+  import { requestJSON } from '$lib/api-client.js';
+  let loadError = '';
   import { page } from '$app/stores';
   import EventCard from './EventCard.svelte';
   import Timeline from '../stats/Timeline.svelte';
@@ -19,6 +21,7 @@
   
   async function fetchCalendar() {
     loading = true;
+    loadError = "";
 
     const params = new URLSearchParams({
       currencies: selectedCurrencies.join(','),
@@ -26,12 +29,11 @@
     });
 
     try {
-      const response = await fetch(`/api/calendar?${params}`);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
-      events = data.events || [];
+      const data = await requestJSON(`/api/calendar?${params}`);
+      if (!Array.isArray(data.events)) throw new Error("Réponse calendrier invalide");
+      events = data.events.map(e => ({ ...e, impact: String(e.impact).toLowerCase() }));
     } catch (error) {
-      console.error('Erreur fetch calendrier:', error);
+      loadError = error.message;
       events = [];
     } finally {
       loading = false;
@@ -123,7 +125,8 @@
   </div>
   
   <!-- Contenu -->
-  {#if loading}
+  {#if loadError}<p role="alert">Calendrier indisponible : {loadError}</p>
+  {:else if loading}
     <div class="loading">
       <div class="spinner"></div>
       <p>Récupération du calendrier...</p>

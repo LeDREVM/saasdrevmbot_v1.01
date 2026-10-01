@@ -10,8 +10,10 @@
   
   $: currentPath = $page.url.pathname;
   
-  // User ID (hardcoded pour l'instant, à remplacer par auth)
-  const userId = 'negus_dja';
+  // Identité issue de la session Supabase.
+  let userId = '';
+  import { supabase, supabaseEnabled } from '$lib/supabase.js';
+  import { authRequest } from '$lib/auth-request.js';
   
   // State
   /** @type {any} */
@@ -23,7 +25,6 @@
   /** @type {any} */
   let stats = null;
   /** @type {any} */
-  let syncStatus = null;
   let loading = true;
   let backendError = false; // vrai si l'API d'alertes est injoignable (backend non déployé)
   let activeTab = 'overview'; // overview, config, history
@@ -34,36 +35,41 @@
   
   // Fetch functions
   async function fetchSettings() {
-    const response = await fetch(`${API_URL}/alert-config/settings/${userId}`);
-    settings = await response.json();
+    const owner = userId;
+    const response = await authRequest(`${API_URL}/alert-config/settings/${owner}`);
+    if (owner !== userId) return;
+    settings = response;
   }
   
   async function fetchActiveAlerts() {
-    const response = await fetch(`${API_URL}/alert-config/active-alerts/${userId}`);
-    const data = await response.json();
+    const owner = userId;
+    const response = await authRequest(`${API_URL}/alert-config/active-alerts/${owner}`);
+    if (owner !== userId) return;
+    const data = response;
     activeAlerts = data.alerts || [];
   }
   
   async function fetchHistory() {
-    const response = await fetch(`${API_URL}/alert-config/history/${userId}?limit=20`);
-    const data = await response.json();
+    const owner = userId;
+    const response = await authRequest(`${API_URL}/alert-config/history/${owner}?limit=20`);
+    if (owner !== userId) return;
+    const data = response;
     history = data.alerts || [];
   }
   
   async function fetchStats() {
-    const response = await fetch(`${API_URL}/alert-config/stats/${userId}?days_back=30`);
-    stats = await response.json();
+    const owner = userId;
+    const response = await authRequest(`${API_URL}/alert-config/stats/${owner}?days_back=30`);
+    if (owner !== userId) return;
+    stats = response;
   }
   
   async function loadAll() {
+    if (!userId) { loading = false; return; }
     loading = true;
     try {
-      await Promise.all([
-        fetchSettings(),
-        fetchActiveAlerts(),
-        fetchHistory(),
-        fetchStats()
-      ]);
+      await fetchSettings();
+      await Promise.all([fetchActiveAlerts(), fetchHistory(), fetchStats()]);
       backendError = false;
     } catch (error) {
       console.error('Erreur chargement:', error);
@@ -75,57 +81,39 @@
   
   /** @param {any} newSettings */
   async function updateSettings(newSettings) {
-    const response = await fetch(`${API_URL}/alert-config/settings/${userId}`, {
+    try {
+    const response = await authRequest(`${API_URL}/alert-config/settings/${userId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newSettings)
     });
     
-    if (response.ok) {
+    if (response) {
       await fetchSettings();
       alert('✅ Paramètres mis à jour !');
     }
+    } catch (error) { alert(error.message); }
   }
   
-  // Nextcloud sync functions
-  async function syncToNextcloud() {
-    try {
-      const response = await fetch(`${API_URL}/nextcloud/sync/all`, {
-        method: 'POST'
-      });
-      const data = await response.json();
-      alert('✅ Synchronisation lancée !');
-      await checkSyncStatus();
-    } catch (error) {
-      alert('❌ Erreur sync: ' + (error instanceof Error ? error.message : String(error)));
-    }
-  }
-  
-  async function checkSyncStatus() {
-    try {
-      const response = await fetch(`${API_URL}/nextcloud/status`);
-      syncStatus = await response.json();
-    } catch (error) {
-      console.error('Erreur statut sync:', error);
-    }
-  }
-  
-  // Lifecycle
   onMount(() => {
-    loadAll();
-    checkSyncStatus();
+    if (!supabaseEnabled) { loading = false; return; }
+    let disposed = false;
+    function accept(current) {
+      if (disposed) return;
+      userId = current?.user?.id || '';
+      settings = null; activeAlerts = []; history = []; stats = null;
+      loadAll();
+    }
+    const { data } = supabase.auth.onAuthStateChange((_event, current) => accept(current));
+    supabase.auth.getSession().then(({ data }) => accept(data.session));
+    const timer = setInterval(loadAll, 5 * 60 * 1000);
+    return () => { disposed = true; clearInterval(timer); data.subscription.unsubscribe(); };
   });
-  
-  // Auto-refresh toutes les 5 minutes
-  setInterval(() => {
-    fetchActiveAlerts();
-    fetchHistory();
-  }, 5 * 60 * 1000);
-  
+
   // KPIs calculés
   $: alertCount = activeAlerts.length;
   $: extremeCount = activeAlerts.filter(a => a.prediction?.risk_level === 'extreme').length;
-  $: accuracyRate = stats?.summary?.accuracy_rate || 0;
+  $: accuracyRate = stats?.summary?.accuracy_rate ?? '—';
   $: totalSent = stats?.summary?.total_alerts_sent || 0;
 </script>
 
@@ -179,12 +167,14 @@
     </div>
   {/if}
 
-  {#if loading}
+  {#if !userId}
+    <p class="backend-banner"><a href="/journal">Connecte-toi depuis le journal</a> pour accéder à tes alertes.</p>
+  {:else if loading}
     <div class="loading-state">
       <div class="spinner"></div>
       <p>Chargement du dashboard...</p>
     </div>
-  {:else}
+  {:else if !backendError}
     <!-- Vue d'ensemble -->
     {#if activeTab === 'overview'}
       <div class="overview-section">
@@ -241,45 +231,6 @@
               {#each activeAlerts as alert (alert.event.event_name + alert.symbol)}
                 <AlertCard {alert} />
               {/each}
-            </div>
-          {/if}
-        </section>
-        
-        <!-- Synchronisation Nextcloud -->
-        <section class="section sync-section">
-          <div class="section-header">
-            <h2>☁️ Synchronisation Nextcloud</h2>
-            <p class="section-desc">Sauvegarde automatique sur ledream.kflw.io</p>
-          </div>
-          
-          <div class="sync-actions">
-            <button on:click={syncToNextcloud} class="sync-btn">
-              📤 Sync Maintenant
-            </button>
-            
-            <button on:click={checkSyncStatus} class="status-btn">
-              ℹ️ Vérifier Statut
-            </button>
-          </div>
-          
-          {#if syncStatus}
-            <div class="sync-status" class:success={syncStatus.connected}>
-              {#if syncStatus.connected}
-                <span class="status-icon">✅</span>
-                <div class="status-content">
-                  <strong>Connecté à Nextcloud</strong>
-                  <p class="sync-url">{syncStatus.nextcloud_url}</p>
-                  {#if syncStatus.last_sync}
-                    <p class="sync-time">Dernière sync: {new Date(syncStatus.last_sync).toLocaleString('fr-FR')}</p>
-                  {/if}
-                </div>
-              {:else}
-                <span class="status-icon">❌</span>
-                <div class="status-content">
-                  <strong>Déconnecté</strong>
-                  <p class="sync-url">Vérifier la configuration dans .env</p>
-                </div>
-              {/if}
             </div>
           {/if}
         </section>

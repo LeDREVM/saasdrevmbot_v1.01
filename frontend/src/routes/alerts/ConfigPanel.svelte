@@ -14,8 +14,8 @@
       watched_symbols: [],
       alert_levels: { extreme: true, high: true, medium: false },
       channels: { discord: false, telegram: false },
-      custom_webhooks: { discord: '' },
-      quiet_hours: { enabled: false, start: '22:00', end: '07:00' },
+      custom_webhooks: { discord: '', telegram_token: '', telegram_chat_id: '' },
+      quiet_hours: { enabled: false, start: 22, end: 7 },
       advanced: { advance_notice_hours: 2, min_expected_pips: 10, require_high_confidence: false },
     };
     /** @param {any} d @param {any} s */
@@ -30,6 +30,7 @@
       return out;
     };
     let localSettings = merge(DEFAULTS, settings);
+    $: localSettings = merge(DEFAULTS, settings);
     
     const availableSymbols = [
       { value: 'EURUSD', label: 'EUR/USD 💶' },
@@ -60,10 +61,12 @@
         alert_medium: localSettings.alert_levels.medium,
         discord_enabled: localSettings.channels.discord,
         telegram_enabled: localSettings.channels.telegram,
-        custom_discord_webhook: localSettings.custom_webhooks.discord,
+        ...(localSettings.custom_webhooks.discord ? { custom_discord_webhook: localSettings.custom_webhooks.discord } : {}),
+        ...(localSettings.custom_webhooks.telegram_token ? { custom_telegram_token: localSettings.custom_webhooks.telegram_token } : {}),
+        ...(localSettings.custom_webhooks.telegram_chat_id ? { custom_telegram_chat_id: localSettings.custom_webhooks.telegram_chat_id } : {}),
         quiet_hours_enabled: localSettings.quiet_hours.enabled,
-        quiet_hours_start: localSettings.quiet_hours.start,
-        quiet_hours_end: localSettings.quiet_hours.end,
+        quiet_hours_start: Number(String(localSettings.quiet_hours.start).split(':')[0]),
+        quiet_hours_end: Number(String(localSettings.quiet_hours.end).split(':')[0]),
         advance_notice_hours: localSettings.advanced.advance_notice_hours,
         min_expected_pips: localSettings.advanced.min_expected_pips,
         require_high_confidence: localSettings.advanced.require_high_confidence
@@ -180,6 +183,15 @@
       </div>
     </section>
     
+    <section class="config-section">
+      <h3>Canaux personnels</h3>
+      <p class="section-desc">Les secrets enregistrés ne sont jamais affichés. Laisser vide conserve la configuration.</p>
+      <label>Webhook Discord <input type="password" autocomplete="new-password" bind:value={localSettings.custom_webhooks.discord} /></label>
+      <label>Clé du bot Telegram <input type="password" autocomplete="new-password" bind:value={localSettings.custom_webhooks.telegram_token} /></label>
+      <label>Chat Telegram <input bind:value={localSettings.custom_webhooks.telegram_chat_id} /></label>
+      {#if settings?.custom_webhooks?.telegram_configured}<p>Clé Telegram enregistrée.</p>{/if}
+      {#if settings?.custom_webhooks?.discord_configured}<p>Webhook Discord enregistré.</p>{/if}
+    </section>
     <!-- Heures de Silence -->
     <section class="config-section">
       <h3>🌙 Heures de Silence</h3>
@@ -199,7 +211,7 @@
       {#if localSettings.quiet_hours.enabled}
         <div class="hours-input">
           <label>
-            <span>Début (heure locale)</span>
+            <span>Début (Guadeloupe)</span>
             <input 
               type="number" 
               min="0" 
@@ -209,7 +221,7 @@
           </label>
           
           <label>
-            <span>Fin (heure locale)</span>
+            <span>Fin (Guadeloupe)</span>
             <input 
               type="number" 
               min="0" 

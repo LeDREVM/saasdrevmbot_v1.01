@@ -14,15 +14,15 @@ export const config = {
 
   // ── Crons & timezone ────────────────────────────────────────────────────────
   timing: {
-    morningCron:      '25 14 * * 1-5',   // 14h25 UTC = 10h25 Guadeloupe, lun-ven
-    sessionBilanCron: '0 21 * * 1-5',    // 21h00 UTC = 17h00 Guadeloupe, lun-ven
-    cotCron:          '0 22 * * 5',      // 22h00 UTC vendredi
+    morningCron:      '25 9 * * 1-5',    // 09:25 New York, avant ouverture
+    sessionBilanCron: '0 16 * * 1-5',    // 16:00 New York
+    cotCron:          '0 17 * * 5',      // 17:00 New York vendredi
     preAlertCron:     '* * * * *',       // chaque minute
-    postPollCron:     '*/2 13-22 * * 1-5',
-    cacheRefreshCron: '*/5 13-22 * * 1-5',
-    dxyCheckCron:     '*/5 13-22 * * 1-5',
+    postPollCron:     '*/2 8-17 * * 1-5',
+    cacheRefreshCron: '*/5 8-17 * * 1-5',
+    dxyCheckCron:     '*/5 8-17 * * 1-5',
     resetCron:        '0 0 * * *',
-    timezone:         'UTC',
+    timezone:         'America/New_York',
     guadeloupeTz:     'America/Guadeloupe',
   },
 
